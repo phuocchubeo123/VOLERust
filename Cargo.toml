@@ -1,0 +1,15 @@
+[package]
+name = "vole-rust"
+version = "0.1.0"
+authors = ["Phuoc"]
+
+[dependencies]
+# Add Lambdaworks dependencies for field and cryptographic operations
+lambdaworks_math = { git = "https://github.com/lambdaclass/lambdaworks.git", package = "lambdaworks-math" }
+lambdaworks_crypto = { git = "https://github.com/lambdaclass/lambdaworks.git", package = "lambdaworks-crypto" }
+
+# Random number generation for cryptographic operations
+rand = "0.8"
+
+# Enable networking features
+tokio = { version = "1", features = ["full"] }
