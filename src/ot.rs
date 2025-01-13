@@ -32,6 +32,10 @@ impl<IO: CommunicationChannel> OTCO<IO> {
         let A_encoded = A_affine.to_encoded_point(false);
         self.io.send_point(&A_encoded);
 
+        // Compute (A * a)^-1
+        let mut A_a_inverse = A * a;
+        A_a_inverse = A_a_inverse.neg();
+
         let mut B_points = vec![ProjectivePoint::identity(); length];
         let mut BA_points = vec![ProjectivePoint::identity(); length];
 
@@ -46,9 +50,7 @@ impl<IO: CommunicationChannel> OTCO<IO> {
             let B_a = B_projective * a;
             B_points[i] = B_a;
 
-            // Compute BA[i] = B[i] + A * a^-1
-            let a_inverse = a.invert().unwrap();
-            let A_a_inverse = A * a_inverse;
+            // Compute BA[i] = B[i] + (A * a)^-1
             BA_points[i] = B_a + A_a_inverse;
         }
 
