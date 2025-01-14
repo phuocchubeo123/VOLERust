@@ -1,5 +1,7 @@
 extern crate vole_rust;
 extern crate lambdaworks_math;
+extern crate rand;
+extern crate rand_chacha;
 
 use std::net::{TcpListener, TcpStream};
 use vole_rust::socket_channel::TcpChannel;
@@ -7,11 +9,21 @@ use vole_rust::cope::Cope;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::field::traits::IsPrimeField;
+use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
+use rand::{RngCore, random};
+use rand_chacha::ChaCha20Rng;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
+pub fn rand_field_element(rng: &mut dyn rand::RngCore) -> FE {
+    let rand_big = UnsignedInteger { limbs: random(&mut rng) };
+    FE::new(rand_big)
+}
+
 fn main() {
+    let mut rng = ChaCha20Rng::seed_from_u64(42);
+
     // Listen for the sender
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to port");
     let (stream, _) = listener.accept().expect("Failed to accept connection");
@@ -19,20 +31,23 @@ fn main() {
 
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
-    let mut cope = Cope::new(1, &mut channel, m);
+    let mut receiver_cope = Cope::new(1, &mut channel, m);
 
-    // Initialize receiver
-    cope.initialize_receiver();
+    // Receiver initializes
+    receiver_cope.initialize_receiver();
 
-    // Prepare dummy data for the triple check
-    let a = FE::zero(); // Placeholder; not used in the receiver for the check
-    let b: Vec<FE> = (0..m).map(|i| FE::from(i as u64 + 1)).collect();
+    // Generate a random u
+    let u = rand_field_element(&mut rng);
+    println!("Receiver u: {}", u);
 
-    // Run the COPE protocol
-    let u = FE::from(54321); // Arbitrary field element
-    let result = cope.extend_receiver(u);
-    println!("COPE protocol result (receiver): {:?}", result);
+    // Test extend
+    let single_result = receiver_cope.extend_receiver(u);
+    receiver_cope.check_triple(&[u], &[single_result], 1);
 
-    // Run the consistency check
-    cope.check_triple(&[a], &b, m);
+    // Test extend_batch
+    let batch_size = 10;
+    let u_batch: Vec<FE> = (0..batch_size).map(|_| FE::from(rng.gen::<u128>())).collect();
+    let mut batch_result = vec![FE::zero(); batch_size];
+    receiver_cope.extend_receiver_batch(&mut batch_result, &u_batch, batch_size);
+    receiver_cope.check_triple(&u_batch, &batch_result, batch_size);
 }
