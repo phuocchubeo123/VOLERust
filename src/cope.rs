@@ -7,21 +7,21 @@ use lambdaworks_math::field::element::FieldElement;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-pub struct Cope<IO> {
+pub struct Cope<'a, IO> {
     party: u8,                     // 0 for sender, 1 for receiver
     m: usize,                      // Number of field elements
-    delta: Option<FE>
+    delta: Option<FE>,             // Delta value for the sender
     delta_bool: Vec<bool>,         // Boolean representation of delta
     prg_g0: Option<Vec<PRG>>,      // PRGs for the 0-choice
     prg_g1: Option<Vec<PRG>>,      // PRGs for the 1-choice (receiver)
-    io: IO
+    io: &'a mut IO,                // Reference to the IO object
     mask: u128,                    // Mask for modular reduction
+    powers_of_two: Vec<FE>,        // Precomputed powers of two
 }
 
-impl<IO: CommunicationChannel> Cope<IO>
-{
+impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
     /// Create a new COPE instance.
-    pub fn new(party: u8, io: IO) -> Self {
+    pub fn new(party: u8, io: &'a mut IO, m: usize) -> Self {
         Self {
             party,
             m,
@@ -31,12 +31,13 @@ impl<IO: CommunicationChannel> Cope<IO>
             prg_g1: None,
             io,
             mask: u128::MAX,
+            powers_of_two: vec![], // Initialize empty, will be filled in `initialize_*`
         }
     }
 
     /// Convert delta to a boolean array.
     fn delta_to_bool(delta: &FE, m: usize) -> Vec<bool> {
-        let mut delta_bytes = delta.to_bytes_le();
+        let delta_bytes = delta.to_bytes_le();
         let mut delta_bool = vec![false; m];
 
         for i in 0..m {
@@ -49,102 +50,103 @@ impl<IO: CommunicationChannel> Cope<IO>
         delta_bool
     }
 
+    /// Precompute powers of two in the field
+    fn precompute_powers_of_two(&mut self) {
+        let mut powers = vec![FE::one(); self.m];
+        let base = FE::from(2);
+        for i in 1..self.m {
+            powers[i] = powers[i - 1] * base;
+        }
+        self.powers_of_two = powers;
+    }
+
     pub fn initialize_sender(&mut self, delta: FE) {
         self.delta = Some(delta);
         self.delta_bool = Self::delta_to_bool(&delta, self.m);
+        self.precompute_powers_of_two(); // Precompute powers of two
 
         // Prepare keys using OTCO
-        let mut k = vec![[0u8; 16]; self.m];
-        let mut otco = OTCO::new(io);
+        let mut k = Vec::new();
+        let mut otco = OTCO::new(self.io);
         otco.recv(&self.delta_bool, &mut k);
 
-        // Initialize or update PRGs in-place
-        match &mut self.prg_g0 {
-            Some(prgs) => {
-                // Reuse existing PRG objects
-                for (i, prg) in prgs.iter_mut().enumerate() {
-                    prg.reseed(&k[i], 0);
-                }
-            }
-            None => {
-                // Initialize PRGs if not already present
-                self.prg_g0 = Some(
-                    k.iter()
-                        .enumerate()
-                        .map(|(i, key)| {
-                            let mut prg = PRG::new(None, i as u64);
-                            prg.reseed(key, 0);
-                            prg
-                        })
-                        .collect(),
-                );
-            }
-        }
+        // Initialize PRGs
+        self.prg_g0 = Some(
+            k.iter()
+                .enumerate()
+                .map(|(i, key)| {
+                    let mut prg = PRG::new(None, i as u64);
+                    prg.reseed(key, 0);
+                    prg
+                })
+                .collect(),
+        );
+
+        assert_eq!(k.len(), self.m, "Mismatch in key length during initialization");
+        assert_eq!(self.prg_g0.as_ref().unwrap().len(), self.m, "Mismatch in prg_g0 length after initialization");
     }
 
-    pub fn initialize_receiver(&mut self, io: &mut IO) {
+    pub fn initialize_receiver(&mut self) {
+        self.precompute_powers_of_two(); // Precompute powers of two
+
         let mut k0 = vec![[0u8; 16]; self.m];
         let mut k1 = vec![[0u8; 16]; self.m];
 
         // Generate random keys
-        // Create a separate PRG to initialize k0 and k1
         let mut key_prg = PRG::new(None, 0);
         key_prg.random_block(&mut k0);
         key_prg.random_block(&mut k1);
 
         // Use OTCO to send keys
-        let mut otco = OTCO::new(io);
+        let mut otco = OTCO::new(self.io);
         otco.send(&k0, &k1);
 
-        // Initialize or update PRGs in-place
-        match (&mut self.prg_g0, &mut self.prg_g1) {
-            (Some(prgs_g0), Some(prgs_g1)) => {
-                // Reuse existing PRG objects
-                for i in 0..self.m {
-                    prgs_g0[i].reseed(&k0[i], 0);
-                    prgs_g1[i].reseed(&k1[i], 0);
-                }
-            }
-            (None, None) => {
-                // Initialize PRGs if not already present
-                self.prg_g0 = Some(
-                    k0.iter()
-                        .enumerate()
-                        .map(|(i, key)| {
-                            let mut prg = PRG::new(None, i as u64);
-                            prg.reseed(key, 0);
-                            prg
-                        })
-                        .collect(),
-                );
-                self.prg_g1 = Some(
-                    k1.iter()
-                        .enumerate()
-                        .map(|(i, key)| {
-                            let mut prg = PRG::new(None, (i + self.m) as u64);
-                            prg.reseed(key, 0);
-                            prg
-                        })
-                        .collect(),
-                );
-            }
-            _ => panic!("prg_g0 and prg_g1 should either both exist or both be None"),
-        }
+        // Initialize PRGs
+        self.prg_g0 = Some(
+            k0.iter()
+                .enumerate()
+                .map(|(i, key)| {
+                    let mut prg = PRG::new(None, i as u64);
+                    prg.reseed(key, 0);
+                    prg
+                })
+                .collect(),
+        );
+        self.prg_g1 = Some(
+            k1.iter()
+                .enumerate()
+                .map(|(i, key)| {
+                    let mut prg = PRG::new(None, (i + self.m) as u64);
+                    prg.reseed(key, 0);
+                    prg
+                })
+                .collect(),
+        );
     }
 
     pub fn extend_sender(&mut self) -> FE {
         let mut w = vec![FE::zero(); self.m];
-        let mut v = vec![FE::zero(); self.m];
 
-        // Generate random w values using PRGs
         if let Some(prgs) = &mut self.prg_g0 {
+            assert_eq!(prgs.len(), self.m, "prg_g0 length does not match self.m");
+            let mut w = vec![FE::zero(); self.m];
+            assert_eq!(w.len(), self.m, "w length does not match self.m");
+
             for (i, prg) in prgs.iter_mut().enumerate() {
+                assert!(i < self.m, "Index out of bounds: i = {}, self.m = {}", i, self.m);
                 prg.random_stark252_elements(&mut [w[i]]);
             }
         }
 
+        // // Generate random w values using PRGs
+        // if let Some(prgs) = &mut self.prg_g0 {
+        //     for (i, prg) in prgs.iter_mut().enumerate() {
+        //         prg.random_stark252_elements(&mut [w[i]]);
+        //     }
+        // }
+
         // Receive v from the receiver
-        v = self.io.receive_stark252(self.m).expect("Failed to receive v");
+        let mut v = self.io.receive_stark252(self.m).expect("Failed to receive v");
 
         // Adjust v based on delta_bool
         for i in 0..self.m {
@@ -156,7 +158,7 @@ impl<IO: CommunicationChannel> Cope<IO>
         }
 
         // Aggregate v into a single field element
-        Self::prm2pr(&v)
+        self.prm2pr(&v)
     }
 
     pub fn extend_sender_batch(&mut self, ret: &mut [FE], size: usize) {
@@ -193,7 +195,7 @@ impl<IO: CommunicationChannel> Cope<IO>
         }
 
         // Aggregate batch results into ret
-        Self::prm2pr_batch(ret, &v);
+        self.prm2pr_batch(ret, &v);
     }
 
     pub fn extend_receiver(&mut self, u: FE) -> FE {
@@ -218,7 +220,7 @@ impl<IO: CommunicationChannel> Cope<IO>
             .expect("Failed to send tau");
 
         // Aggregate w0 into a single field element
-        Self::prm2pr(&w0)
+        self.prm2pr(&w0)
     }
 
     pub fn extend_receiver_batch(&mut self, ret: &mut [FE], u: &[FE], size: usize) {
@@ -246,54 +248,42 @@ impl<IO: CommunicationChannel> Cope<IO>
             .expect("Failed to send tau");
 
         // Aggregate w0 batch results into ret
-        Self::prm2pr_batch(ret, &w0);
+        self.prm2pr_batch(ret, &w0);
     }
 
-    /// Aggregates a vector of field elements into a single field element.
-    fn prm2pr(elements: &[FE]) -> FE {
-        elements.iter().enumerate().fold(FE::zero(), |acc, (i, e)| {
-            acc + (*e << i)
-        })
+    /// Aggregates a vector of field elements into a single field element using precomputed powers of two.
+    fn prm2pr(&self, elements: &[FE]) -> FE {
+        elements
+            .iter()
+            .zip(&self.powers_of_two)
+            .fold(FE::zero(), |acc, (e, power)| acc + (*e * *power))
     }
 
-    /// Aggregates a batch of vectors of field elements into a result array.
-    fn prm2pr_batch(ret: &mut [FE], elements: &[Vec<FE>]) {
+    /// Aggregates a batch of vectors of field elements into a result array using precomputed powers of two.
+    fn prm2pr_batch(&self, ret: &mut [FE], elements: &[Vec<FE>]) {
         for (j, result) in ret.iter_mut().enumerate() {
-            *result = elements.iter().enumerate().fold(FE::zero(), |acc, (i, row)| {
-                acc + (row[j] << i)
+            *result = elements.iter().zip(&self.powers_of_two).fold(FE::zero(), |acc, (row, power)| {
+                acc + (row[j] * *power)
             });
         }
     }
 
-    /// Consistency check function
-    pub fn check_triple(&mut self, a: &[u64], b: &[FE], sz: usize) {
+    /// Consistency check function where `a` has only one `FE`
+    pub fn check_triple(&mut self, a: &[FE], b: &[FE], sz: usize) {
         if self.party == 0 {
             // Sender's role
-            // Serialize and send `a` and `b` to the receiver
-            let a_bytes: Vec<[u8; 16]> = a
-                .iter()
-                .map(|val| {
-                    let mut bytes = [0u8; 16];
-                    bytes[..8].copy_from_slice(&val.to_le_bytes());
-                    bytes
-                })
-                .collect();
-
             self.io
-                .send_data(&a_bytes)
+                .send_stark252(a)
                 .expect("Failed to send `a` in check_triple");
             self.io
                 .send_stark252(b)
                 .expect("Failed to send `b` in check_triple");
         } else {
             // Receiver's role
-            // Receive `delta` and `c` from the sender
-            let mut delta_buf = [0u8; 8];
-            self.io
-                .receive_data(&mut delta_buf)
-                .expect("Failed to receive `delta` in check_triple");
-            let delta = u64::from_le_bytes(delta_buf);
-
+            let delta = self
+                .io
+                .receive_stark252(1)
+                .expect("Failed to receive `delta` in check_triple")[0];
             let c = self
                 .io
                 .receive_stark252(sz)
@@ -301,10 +291,8 @@ impl<IO: CommunicationChannel> Cope<IO>
 
             // Perform the consistency check
             for i in 0..sz {
-                let tmp = a[i] as u128 * delta as u128; // a[i] * delta
-                let tmp = FE::from(tmp) + &c[i];        // (a[i] * delta) + c[i]
-
-                if tmp != b[i] {
+                let tmp = b[i] - (delta * c[i]); // Rearranged: b[i] == delta * c[i]
+                if tmp != FE::zero() {
                     eprintln!("Consistency check failed at index {}", i);
                     panic!("Consistency check failed");
                 }

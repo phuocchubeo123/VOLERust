@@ -2,17 +2,14 @@ use crate::hash::Hash;
 use crate::comm_channel::CommunicationChannel;
 use p256::elliptic_curve::sec1::{ToEncodedPoint, FromEncodedPoint};
 use p256::elliptic_curve::{Field, Group}; 
-use p256::{PublicKey, Scalar, AffinePoint, ProjectivePoint};
-use p256::ecdh::EphemeralSecret;
-use rand::Rng;
-use std::ops::Mul;
+use p256::{Scalar, AffinePoint, ProjectivePoint};
 
-pub struct OTCO<IO> {
-    io: IO,
+pub struct OTCO<'a, IO> {
+    io: &'a mut IO,
 }
 
-impl<IO: CommunicationChannel> OTCO<IO> {
-    pub fn new(io: IO) -> Self {
+impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
+    pub fn new(io: &'a mut IO) -> Self {
         Self { io }
     }
 
@@ -98,7 +95,6 @@ impl<IO: CommunicationChannel> OTCO<IO> {
 
             let B_encoded = B_projective.to_affine().to_encoded_point(false);
             self.io.send_point(&B_encoded);
-
         }
 
         self.io.flush();

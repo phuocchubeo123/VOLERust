@@ -1,20 +1,38 @@
-use vole_rust::Cope;
-use vole_rust::{F, FE};
+extern crate vole_rust;
+extern crate lambdaworks_math;
+
+use std::net::{TcpListener, TcpStream};
+use vole_rust::socket_channel::TcpChannel;
+use vole_rust::cope::Cope;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::field::traits::IsPrimeField;
+
+pub type F = Stark252PrimeField;
+pub type FE = FieldElement<F>;
 
 fn main() {
-    // Receiver setup
-    let mut cope_receiver = Cope::new(1, 128);
-    cope_receiver.initialize_receiver();
+    // Listen for the sender
+    let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to port");
+    let (stream, _) = listener.accept().expect("Failed to accept connection");
+    let mut channel = TcpChannel::new(stream);
 
-    // Example input value for u
-    let u = FE::from(67890);
+    // Set up COPE
+    let m = F::field_bit_size(); // Number of field elements
+    let mut cope = Cope::new(1, &mut channel, m);
 
-    // Perform receiver extend
-    let receiver_result = cope_receiver.extend_receiver(u);
+    // Initialize receiver
+    cope.initialize_receiver();
 
-    // Print results
-    println!("Receiver Result:");
-    for (i, value) in receiver_result.iter().enumerate() {
-        println!("Index {}: {}", i, value);
-    }
+    // Prepare dummy data for the triple check
+    let a = FE::zero(); // Placeholder; not used in the receiver for the check
+    let b: Vec<FE> = (0..m).map(|i| FE::from(i as u64 + 1)).collect();
+
+    // Run the COPE protocol
+    let u = FE::from(54321); // Arbitrary field element
+    let result = cope.extend_receiver(u);
+    println!("COPE protocol result (receiver): {:?}", result);
+
+    // Run the consistency check
+    cope.check_triple(&[a], &b, m);
 }

@@ -2,9 +2,15 @@ use crate::comm_channel::CommunicationChannel;
 
 use std::net::TcpStream;
 use p256::EncodedPoint;
-use p256::{AffinePoint, ProjectivePoint, PublicKey, Scalar};
 
 use std::io::{Write, Read};
+
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::field::element::FieldElement;
+use lambdaworks_math::traits::ByteConversion;
+
+pub type F = Stark252PrimeField;
+pub type FE = FieldElement<F>;
 
 pub struct TcpChannel {
     stream: TcpStream,
@@ -19,7 +25,7 @@ impl TcpChannel {
 
 impl CommunicationChannel for TcpChannel {
     /// Sends a vector of STARK-252 field elements over the TCP channel.
-    pub fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
+    fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
         // Serialize each field element into 32-byte little-endian representation
         let mut serialized_data = Vec::new();
         for element in elements {
@@ -39,7 +45,7 @@ impl CommunicationChannel for TcpChannel {
     }
 
     /// Receives a vector of STARK-252 field elements from the TCP channel.
-    pub fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
+    fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
         // Read the size prefix
         let mut size_buf = [0u8; 8];
         self.stream.read_exact(&mut size_buf)?;

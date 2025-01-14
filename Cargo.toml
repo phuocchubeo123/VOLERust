@@ -17,13 +17,16 @@ sha2 = "0.10.8"
 aes = "0.8.4"
 
 [[bin]]
-name = "test_ot"
+name = "sender_ot"
 
 [[bin]]
-name = "sender"
-
-[[bin]]
-name = "receiver"
+name = "receiver_ot"
 
 [[bin]]
 name = "test_prg"
+
+[[bin]]
+name = "sender_cope"
+
+[[bin]]
+name = "receiver_cope"
