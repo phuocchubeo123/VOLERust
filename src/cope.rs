@@ -15,7 +15,7 @@ pub struct Cope<'a, IO> {
     delta_bool: Vec<bool>,         // Boolean representation of delta
     prg_g0: Option<Vec<PRG>>,      // PRGs for the 0-choice
     prg_g1: Option<Vec<PRG>>,      // PRGs for the 1-choice (receiver)
-    io: &'a mut IO,                // Reference to the IO object
+    pub(crate) io: &'a mut IO,                // Reference to the IO object
     mask: u128,                    // Mask for modular reduction
     powers_of_two: Vec<FE>,        // Precomputed powers of two
 }

@@ -46,3 +46,9 @@ name = "receiver_tcp"
 
 [[bin]]
 name = "sender_tcp"
+
+[[bin]]
+name = "sender_base_svole"
+
+[[bin]]
+name = "receiver_base_svole"
