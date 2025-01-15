@@ -24,10 +24,19 @@ name = "sender_ot"
 name = "receiver_ot"
 
 [[bin]]
-name = "test_prg"
-
-[[bin]]
 name = "sender_cope"
 
 [[bin]]
 name = "receiver_cope"
+
+[[bin]]
+name = "sender_triple_cope"
+
+[[bin]]
+name = "receiver_triple_cope"
+
+[[bin]]
+name = "test_prg"
+
+[[bin]]
+name = "test_field"

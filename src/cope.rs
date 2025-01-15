@@ -241,8 +241,13 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
             }
         }
 
+
         // Send tau to the sender
         let tau_flat: Vec<FE> = tau.iter().flat_map(|row| row.iter().cloned()).collect();
+        // println!("The number of elements in tau_flat sent: {:?}", tau_flat.clone().len());
+
+        // assert_eq!(tau_flat.clone().len(), self.m * size, "tau_flat mismatch type");
+
         self.io
             .send_stark252(&tau_flat)
             .expect("Failed to send tau");
@@ -291,8 +296,8 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
 
             // Perform the consistency check
             for i in 0..sz {
-                let tmp = b[i] - (delta * c[i]); // Rearranged: b[i] == delta * c[i]
-                if tmp != FE::zero() {
+                // let tmp = b[i] - (delta * c[i]); // Rearranged: b[i] == delta * c[i]
+                if b[i] != a[i] * delta + c[i] {
                     eprintln!("Consistency check failed at index {}", i);
                     panic!("Consistency check failed");
                 }

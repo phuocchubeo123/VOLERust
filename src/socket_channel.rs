@@ -26,57 +26,76 @@ impl TcpChannel {
 impl CommunicationChannel for TcpChannel {
     /// Sends a vector of STARK-252 field elements over the TCP channel.
     fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
-        // Serialize each field element into 32-byte little-endian representation
-        let mut serialized_data = Vec::new();
+        // Define the chunk size (in bytes). For example, 32 elements (32 bytes each) per chunk.
+        const CHUNK_SIZE: usize = 1024; // Adjust this as needed
+
+        // Serialize all elements into a vector
+        let mut serialized_data = Vec::with_capacity(elements.len() * 32);
         for element in elements {
             serialized_data.extend_from_slice(&element.to_bytes_le());
         }
 
-        // Calculate the total size of the serialized data
+        // Calculate the total size of the data
         let total_size = serialized_data.len() as u64;
 
-        // Send the size prefix
+        // Send the total size
         self.stream.write_all(&total_size.to_le_bytes())?;
 
-        // Send the serialized data
-        self.stream.write_all(&serialized_data)?;
+        // Send data in chunks
+        let mut start = 0;
+        while start < serialized_data.len() {
+            let end = (start + CHUNK_SIZE).min(serialized_data.len());
+            self.stream.write_all(&serialized_data[start..end])?;
+            start = end;
+        }
 
         Ok(())
     }
 
-    /// Receives a vector of STARK-252 field elements from the TCP channel.
     fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
-        // Read the size prefix
+        // Define the chunk size (in bytes)
+        const CHUNK_SIZE: usize = 1024; // Adjust this as needed
+
+        // Read the total size prefix
         let mut size_buf = [0u8; 8];
         self.stream.read_exact(&mut size_buf)?;
-        let received_size = u64::from_le_bytes(size_buf);
+        let total_size = u64::from_le_bytes(size_buf);
 
         // Validate the size
         let expected_size = (count * 32) as u64;
-        if received_size != expected_size {
+        if total_size != expected_size {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
                     "Unexpected data size received: expected {}, got {}",
-                    expected_size, received_size
+                    expected_size, total_size
                 ),
             ));
         }
 
-        // Receive the serialized data
-        let mut raw_data = vec![0u8; received_size as usize];
-        self.stream.read_exact(&mut raw_data)?;
+        // Receive data in chunks
+        let mut raw_data = vec![0u8; total_size as usize];
+        let mut received = 0;
+        while received < total_size as usize {
+            let end = (received + CHUNK_SIZE).min(total_size as usize);
+            self.stream.read_exact(&mut raw_data[received..end])?;
+            received = end;
+        }
 
-        // Deserialize the field elements from the serialized data
-        let elements = raw_data
+        // Deserialize the elements
+        let elements: Result<Vec<_>, _> = raw_data
             .chunks_exact(32)
-            .map(|chunk| {
-                FE::from_bytes_le(chunk).expect("Failed to deserialize STARK-252 element")
-            })
+            .map(FE::from_bytes_le)
             .collect();
 
-        Ok(elements)
+        elements.map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to deserialize STARK-252 element: {:?}", e),
+            )
+        })
     }
+
 
     fn send_point(&mut self, point: &EncodedPoint) {
         let point_bytes = point.as_bytes(); // Serialize the point

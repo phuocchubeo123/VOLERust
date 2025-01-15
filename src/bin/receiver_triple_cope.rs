@@ -4,8 +4,8 @@ extern crate rand;
 extern crate rand_chacha;
 
 use std::net::{TcpListener, TcpStream};
-use std::time::Instant;
 use vole_rust::socket_channel::TcpChannel;
+use vole_rust::comm_channel::CommunicationChannel;
 use vole_rust::cope::Cope;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
@@ -30,36 +30,29 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
+    // Receive a and b from sender
+    let a = channel
+        .receive_stark252(1)
+        .expect("Failed to receive `a`")[0];
+    let b = channel
+        .receive_stark252(1)
+        .expect("Failed to receive `b`")[0];
+
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
     let mut receiver_cope = Cope::new(1, &mut channel, m);
 
-    // Receiver initializes
-    receiver_cope.initialize_receiver();
+    println!("Receiver values:");
+    println!("A: {}", a);
+    println!("B: {}", b);
 
-    // Generate a random u
-    let u = rand_field_element(&mut rng);
-    println!("Receiver u: {}", u);
+    // // Generate a random delta (to simulate receiver-side delta) and calculate c
+    // let delta = receiver_cope
+    //     .io
+    //     .receive_stark252(1)
+    //     .expect("Failed to receive `delta` in check_triple")[0];
+    // let c = b - a * delta;
 
-    // // Test extend
-    // let single_result = receiver_cope.extend_receiver(u);
-    // receiver_cope.check_triple(&[u], &[single_result], 1);
-
-    // // Test extend
-    // let single_result = receiver_cope.extend_receiver(u);
-    // receiver_cope.check_triple(&[u], &[single_result], 1);
-
-    let start = Instant::now();
-
-    // Test extend_batch
-    let batch_size = 15;
-    let u_batch: Vec<FE> = (0..batch_size).map(|_| rand_field_element(&mut rng)).collect();
-    let mut batch_result = vec![FE::zero(); batch_size];
-    receiver_cope.extend_receiver_batch(&mut batch_result, &u_batch, batch_size);
-
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
-
-    receiver_cope.check_triple(&u_batch, &batch_result, batch_size);
-
+    // Perform the check
+    receiver_cope.check_triple(&[a], &[b], 1);
 }
