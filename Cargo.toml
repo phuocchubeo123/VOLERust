@@ -52,3 +52,6 @@ name = "sender_base_svole"
 
 [[bin]]
 name = "receiver_base_svole"
+
+[[bin]]
+name = "test_two_key_prp"

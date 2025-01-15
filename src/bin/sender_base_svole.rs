@@ -33,7 +33,7 @@ fn main() {
     let mut sender_svole = BaseSvole::new_sender(&mut channel, delta);
 
     // Test triple generation
-    let batch_size = 5;
+    let batch_size = 20000;
     let mut shares = vec![FE::zero(); batch_size];
 
     let start = Instant::now();

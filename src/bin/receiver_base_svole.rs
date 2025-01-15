@@ -31,7 +31,7 @@ fn main() {
     let mut receiver_svole = BaseSvole::new_receiver(&mut channel);
 
     // Test triple generation
-    let batch_size = 5;
+    let batch_size = 20000;
     let mut shares = vec![FE::zero(); batch_size];
     let u_batch: Vec<FE> = (0..batch_size).map(|_| rand_field_element()).collect();
 
