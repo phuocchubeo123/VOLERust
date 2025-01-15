@@ -40,9 +40,9 @@ fn main() {
     // Sender initializes with delta
     sender_cope.initialize_sender(delta);
 
-    // // Test extend
-    // let single_result = sender_cope.extend_sender();
-    // sender_cope.check_triple(&[delta], &[single_result], 1);
+    // Test extend
+    let single_result = sender_cope.extend_sender();
+    sender_cope.check_triple(&[delta], &[single_result], 1);
 
     // // Test extend
     // let single_result = sender_cope.extend_sender();
@@ -51,7 +51,7 @@ fn main() {
     let start = Instant::now();
 
     // Test extend_batch
-    let batch_size = 15;
+    let batch_size = 100;
     let mut batch_result = vec![FE::zero(); batch_size];
     sender_cope.extend_sender_batch(&mut batch_result, batch_size);
 

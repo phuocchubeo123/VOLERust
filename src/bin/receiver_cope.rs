@@ -41,9 +41,9 @@ fn main() {
     let u = rand_field_element(&mut rng);
     println!("Receiver u: {}", u);
 
-    // // Test extend
-    // let single_result = receiver_cope.extend_receiver(u);
-    // receiver_cope.check_triple(&[u], &[single_result], 1);
+    // Test extend
+    let single_result = receiver_cope.extend_receiver(u);
+    receiver_cope.check_triple(&[u], &[single_result], 1);
 
     // // Test extend
     // let single_result = receiver_cope.extend_receiver(u);
@@ -52,7 +52,7 @@ fn main() {
     let start = Instant::now();
 
     // Test extend_batch
-    let batch_size = 15;
+    let batch_size = 100;
     let u_batch: Vec<FE> = (0..batch_size).map(|_| rand_field_element(&mut rng)).collect();
     let mut batch_result = vec![FE::zero(); batch_size];
     receiver_cope.extend_receiver_batch(&mut batch_result, &u_batch, batch_size);

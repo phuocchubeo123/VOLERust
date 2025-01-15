@@ -40,3 +40,9 @@ name = "test_prg"
 
 [[bin]]
 name = "test_field"
+
+[[bin]]
+name = "receiver_tcp"
+
+[[bin]]
+name = "sender_tcp"

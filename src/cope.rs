@@ -3,6 +3,7 @@ use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
+use std::time::Instant;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -210,7 +211,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
                 prgs_g1[i].random_stark252_elements(&mut [w1[i]]);
 
                 w1[i] = w1[i] + u;
-                tau[i] = w0[i] + w1[i];
+                tau[i] = w0[i] - w1[i];
             }
         }
 
@@ -228,6 +229,9 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         let mut w1 = vec![vec![FE::zero(); size]; self.m];
         let mut tau = vec![vec![FE::zero(); size]; self.m];
 
+        let start = Instant::now();
+
+
         // Generate random w0 and w1 values
         if let (Some(prgs_g0), Some(prgs_g1)) = (&mut self.prg_g0, &mut self.prg_g1) {
             for i in 0..self.m {
@@ -236,10 +240,13 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
 
                 for j in 0..size {
                     w1[i][j] = w1[i][j] + u[j];
-                    tau[i][j] = w0[i][j] + w1[i][j];
+                    tau[i][j] = w0[i][j] - w1[i][j];
                 }
             }
         }
+
+        let duration = start.elapsed();
+        println!("Time to generate {} random elements: {:?}", self.m * size * 2, duration);
 
 
         // Send tau to the sender
@@ -255,6 +262,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         // Aggregate w0 batch results into ret
         self.prm2pr_batch(ret, &w0);
     }
+
 
     /// Aggregates a vector of field elements into a single field element using precomputed powers of two.
     fn prm2pr(&self, elements: &[FE]) -> FE {
