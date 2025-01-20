@@ -1,6 +1,7 @@
 use crate::ot::OTCO;
 use crate::comm_channel::CommunicationChannel;
 use crate::prg::PRG;
+use std::convert::TryInto;
 
 const BLOCK_SIZE: usize = 1024 * 2;
 const NUM_BITS: usize = 128;
@@ -264,13 +265,16 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         xor_blocks(&mut q[0..1], &tmp[0..1]);
 
         if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.receive_data(&mut x);
-            base_ot.io.receive_data(&mut t);
+            x = base_ot.io.receive_data()[0];
+            // Receive t
+            let received_data: Vec<[u8; 16]> = base_ot.io.receive_data();
+            assert_eq!(received_data.len(), 2, "Expected exactly 2 elements in received data");
+            t = [received_data[0], received_data[1]]; // Convert Vec to array
         }
 
         let delta = self.delta.expect("Delta must be set during setup");
         mul128(&x, &delta, &mut tmp);
-        xor_blocks(&mut q[0..1], &tmp[0..1]);
+        xor_blocks(&mut q[0..1], &tmp);
 
         cmp_blocks(&q, &t)
     }
@@ -286,14 +290,14 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         t[1] = [0u8; 16];
 
         let mut prg = PRG::new(None, 0);
-        prg.random_block(&mut seed2);
+        prg.random_block(&mut [seed2]);
 
         if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.send_data(&seed2);
+            base_ot.io.send_data(&[seed2]);
             base_ot.io.flush();
         }
 
-        let mut chi_prg = PRG::new(Some(seed2), 0);
+        let mut chi_prg = PRG::new(Some(&seed2), 0);
 
         for i in 0..length / BLOCK_SIZE {
             chi_prg.random_block(&mut chi);
@@ -301,7 +305,9 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             xor_blocks(&mut t[0..1], &tmp[0..1]);
 
             for j in 0..BLOCK_SIZE {
-                x = xor_block(&x, &and_block(&chi[j], &select[r[i * BLOCK_SIZE + j] as usize]));
+                for byt in 0..16 {
+                    x[byt] = x[byt] ^ (chi[j][byt] & select[r[i * BLOCK_SIZE + j] as usize][byt]);
+                }
             }
         }
 
@@ -312,7 +318,9 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             xor_blocks(&mut t[0..1], &tmp[0..1]);
 
             for j in 0..remain {
-                x = xor_block(&x, &and_block(&chi[j], &select[r[length - remain + j] as usize]));
+                for byt in 0..16 {
+                    x[byt] = x[byt] ^ (chi[j][byt] & select[r[length - remain + 1] as usize][byt]);
+                }
             }
         }
 
@@ -322,26 +330,73 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         xor_blocks(&mut t[0..1], &tmp[0..1]);
 
         for j in 0..256 {
-            x = xor_block(&x, &and_block(&chi[j], &select[self.local_r[j] as usize]));
+            for byt in 0..16 {
+                x[byt] = x[byt] ^ (chi[j][byt] & select[self.local_r[j] as usize][byt]);
+            }
         }
 
         if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.send_data(&x);
+            base_ot.io.send_data(&[x]);
             base_ot.io.send_data(&t);
         }
     }
 }
 
+fn mul128(a: &[u8; 16], b: &[u8; 16], res: &mut [[u8; 16]; 2]) {
+    let mut r1 = [0u8; 16];
+    let mut r2 = [0u8; 16];
+
+    // Split inputs into low and high 64-bit parts
+    let a_low = u64::from_le_bytes(a[0..8].try_into().unwrap());
+    let a_high = u64::from_le_bytes(a[8..16].try_into().unwrap());
+    let b_low = u64::from_le_bytes(b[0..8].try_into().unwrap());
+    let b_high = u64::from_le_bytes(b[8..16].try_into().unwrap());
+
+    // Perform carry-less multiplications
+    let tmp3 = clmul64(a_low, b_low); // Low * Low
+    let tmp4 = clmul64(a_high, b_low); // High * Low
+    let tmp5 = clmul64(a_low, b_high); // Low * High
+    let tmp6 = clmul64(a_high, b_high); // High * High
+
+    // Combine results
+    let mid = tmp4 ^ tmp5; // XOR intermediate results
+    let mid_low = (mid & 0xFFFFFFFFFFFFFFFF) << 64; // Lower 64 bits shifted to high part of r1
+    let mid_high = mid >> 64; // Higher 64 bits shifted to low part of r2
+
+    r1[0..8].copy_from_slice(&tmp3.to_le_bytes()); // Low part of tmp3 to r1
+    r1[8..16].copy_from_slice(&(tmp3 >> 64 ^ mid_low).to_le_bytes()); // High part of tmp3 ^ mid_low
+
+    r2[0..8].copy_from_slice(&(tmp6 ^ mid_high).to_le_bytes()); // Low part of tmp6 ^ mid_high
+    r2[8..16].copy_from_slice(&(tmp6 >> 64).to_le_bytes()); // High part of tmp6
+
+    res[0] = r1;
+    res[1] = r2;
+}
+
+// Helper function to perform 64-bit carry-less multiplication
+fn clmul64(a: u64, b: u64) -> u128 {
+    let mut result = 0u128;
+    for i in 0..64 {
+        if (b & (1 << i)) != 0 {
+            result ^= (a as u128) << i;
+        }
+    }
+    result
+}
+
 fn vector_inn_prdt_sum_no_red(res: &mut [[u8; 16]; 2], a: &[[u8; 16]], b: &[[u8; 16]]) {
-    let mut r1 = [0u8; 16]; // Accumulator for first half
-    let mut r2 = [0u8; 16]; // Accumulator for second half
-    let mut r11 = [0u8; 16];
-    let mut r12 = [0u8; 16];
+    // let mut r1 = [0u8; 16]; // Accumulator for first half
+    // let mut r2 = [0u8; 16]; // Accumulator for second half
+    let mut r1 = [0u8; 16];
+    let mut r2 = [0u8; 16];
+    let mut r11 = [[0u8; 16]; 2];
 
     for i in 0..a.len() {
-        mul128(&a[i], &b[i], &mut r11, &mut r12); // Perform 128-bit multiplication
-        xor_block(&mut r1, &r11); // Accumulate the first result
-        xor_block(&mut r2, &r12); // Accumulate the second result
+        mul128(&a[i], &b[i], &mut r11); // Perform 128-bit multiplication
+        for byt in 0..16 {
+            r1[byt] = r1[byt] ^ r11[0][byt];
+            r2[byt] = r2[byt] ^ r11[1][byt];
+        }
     }
 
     res[0] = r1;
@@ -359,10 +414,22 @@ fn bool_to_block(bits: &[bool]) -> [u8; 16] {
     block
 }
 
+fn cmp_blocks(a: &[[u8; 16]], b: &[[u8; 16]]) -> bool {
+    a == b
+}
+
 fn xor_blocks(a: &mut [[u8; 16]], b: &[[u8; 16]]) {
     for (x, y) in a.iter_mut().zip(b.iter()) {
         for i in 0..16 {
             x[i] ^= y[i];
+        }
+    }
+}
+
+fn and_blocks(a: &mut [[u8; 16]], b: &[[u8; 16]]) {
+    for (x, y) in a.iter_mut().zip(b.iter()) {
+        for i in 0..16 {
+            x[i] &= y[i];
         }
     }
 }
