@@ -11,21 +11,14 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut io = TcpChannel::new(stream);
 
-    let malicious = false; // Set to true if testing malicious mode
-    let mut receiver = IKNP::new(&mut io, malicious);
+    let mut receiver_iknp = IKNP::new(&mut io, true);
+    receiver_iknp.setup_recv(None, None);
 
-    // Setup receiver
-    receiver.setup_recv(None, None);
+    let length = 2048;
+    let mut data = vec![[0u8; 16]; length];
+    let r = vec![true; length]; // Example choice bits
 
-    // Prepare input choices
-    let length = 1024; // Number of OTs to perform
-    let choices: Vec<bool> = (0..length).map(|i| i % 2 == 0).collect(); // Alternating 0 and 1
+    receiver_iknp.recv_cot(&mut data, &r, length);
 
-    // Prepare output buffer
-    let mut out = vec![[0u8; 16]; length];
-
-    // Perform pre-computed OTs
-    receiver.recv_pre(&mut out, &choices, length);
-
-    println!("Receiver: Completed pre-computed OTs");
+    println!("Receiver COT data: {:?}", data);
 }

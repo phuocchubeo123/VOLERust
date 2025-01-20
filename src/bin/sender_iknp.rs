@@ -10,18 +10,12 @@ fn main() {
     let stream = TcpStream::connect("127.0.0.1:12345").expect("Failed to connect to receiver");
     let mut io = TcpChannel::new(stream);
 
-    let malicious = false; // Set to true if testing malicious mode
-    let mut sender = IKNP::new(&mut io, malicious);
+    let mut sender_iknp = IKNP::new(&mut io, true);
+    sender_iknp.setup_send(None, None);
 
-    // Setup sender
-    sender.setup_send(None, None);
+    let length = 2048;
+    let mut data = vec![[0u8; 16]; length];
+    sender_iknp.send_cot(&mut data, length);
 
-    // Prepare output buffer
-    let length = 1024; // Number of OTs to perform
-    let mut out = vec![[0u8; 16]; length];
-
-    // Perform pre-computed OTs
-    sender.send_pre(&mut out, length);
-
-    println!("Sender: Completed pre-computed OTs");
+    println!("Sender COT data: {:?}", data);
 }

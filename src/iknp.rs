@@ -51,6 +51,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         if let Some(in_k0) = in_k0 {
             self.k0.copy_from_slice(in_k0);
         } else if let Some(base_ot) = &mut self.base_ot {
+            self.k0.clear();
             base_ot.recv(&self.s, &mut self.k0);
         }
 
@@ -109,12 +110,12 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         }
 
         let mut idx = 0;
-        while idx + 16 <= length {
+        while idx + 16 <= length / 128 {
             self.send_pre_block(&mut out[idx * 128..(idx + 16) * 128], 2048);
             idx += 16;
         }
 
-        let remaining = (length - idx) * 128;
+        let remaining = (length / 128- idx) * 128;
         if remaining > 0 {
             let mut temp_out = self.local_out.clone();
             self.send_pre_block(&mut temp_out, remaining);
@@ -128,7 +129,8 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
     }
 
     fn send_pre_block(&mut self, out: &mut [[u8; 16]], length: usize) {
-        let local_block_size = (length + NUM_BITS) / NUM_BITS * NUM_BITS;
+        let local_block_size = (length + NUM_BITS - 1) / NUM_BITS * NUM_BITS;
+        println!("local_block_size: {}", local_block_size);
 
         let mut t = vec![[0u8; 16]; BLOCK_SIZE];
         let mut res = vec![[0u8; 16]; BLOCK_SIZE];
@@ -139,9 +141,11 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         };
 
         if let Some(prgs) = &mut self.g0 {
+            println!("The number of keys is: {}", prgs.len());
             for (i, prg) in prgs.iter_mut().enumerate() {
                 let start = i * 2048 / 128;
                 let end = start + local_block_size / 128;
+                println!("i, start, end: {}, {}, {}", i, start, end);
                 prg.random_block(&mut t[start..end]);
                 xor_blocks_arr(&mut res[start..end], &t[start..end], &tmp[start..end]);
             }
@@ -162,7 +166,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             block_r[i] = bool_to_block(chunk);
         }
 
-        while idx + 16 <= length {
+        while idx + 16 <= length / 128 {
             self.recv_pre_block(
                 &mut out[(idx * 128)..(idx + 16) * 128], 
                 &block_r[idx..idx + 16], 
@@ -171,7 +175,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             idx += 16;
         }
 
-        let remaining = (length - idx) * 128;
+        let remaining = (length / 128 - idx) * 128;
         if remaining > 0 {
             let mut temp_out = self.local_out.clone();
             self.recv_pre_block(&mut temp_out, &block_r[idx..], remaining);
@@ -191,7 +195,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         let mut t = vec![[0u8; 16]; BLOCK_SIZE];
         let mut tmp = vec![[0u8; 16]; BLOCK_SIZE];
         let mut res = vec![[0u8; 16]; BLOCK_SIZE];
-        let local_block_size = length / 128 * 128;
+        let local_block_size = (length + NUM_BITS - 1) / 128 * 128;
 
         if let (Some(prgs_g0), Some(prgs_g1)) = (&mut self.g0, &mut self.g1) {
             for (i, (prg0, prg1)) in prgs_g0.iter_mut().zip(prgs_g1.iter_mut()).enumerate() {
@@ -360,14 +364,14 @@ fn mul128(a: &[u8; 16], b: &[u8; 16], res: &mut [[u8; 16]; 2]) {
 
     // Combine results
     let mid = tmp4 ^ tmp5; // XOR intermediate results
-    let mid_low = (mid & 0xFFFFFFFFFFFFFFFF) << 64; // Lower 64 bits shifted to high part of r1
+    let mid_low = mid & 0xFFFFFFFFFFFFFFFF; // Lower 64 bits shifted to high part of r1
     let mid_high = mid >> 64; // Higher 64 bits shifted to low part of r2
 
-    r1[0..8].copy_from_slice(&tmp3.to_le_bytes()); // Low part of tmp3 to r1
-    r1[8..16].copy_from_slice(&(tmp3 >> 64 ^ mid_low).to_le_bytes()); // High part of tmp3 ^ mid_low
+    r1[0..8].copy_from_slice(&((tmp3 & 0xFFFFFFFFFFFFFFFF) as u64).to_le_bytes()); // Low part of tmp3 to r1
+    r1[8..16].copy_from_slice(&((tmp3 >> 64 ^ mid_low) as u64).to_le_bytes()); // High part of tmp3 ^ mid_low
 
-    r2[0..8].copy_from_slice(&(tmp6 ^ mid_high).to_le_bytes()); // Low part of tmp6 ^ mid_high
-    r2[8..16].copy_from_slice(&(tmp6 >> 64).to_le_bytes()); // High part of tmp6
+    r2[0..8].copy_from_slice(&(((tmp6 ^ mid_high) & 0xFFFFFFFFFFFFFFFF) as u64).to_le_bytes()); // Low part of tmp6 ^ mid_high
+    r2[8..16].copy_from_slice(&((tmp6 >> 64) as u64).to_le_bytes()); // High part of tmp6
 
     res[0] = r1;
     res[1] = r2;
@@ -443,10 +447,14 @@ fn xor_blocks_arr(res: &mut [[u8; 16]], x: &[[u8; 16]], y: &[[u8; 16]]) {
 }
 
 fn transpose(out: &mut [[u8; 16]], t: &[[u8; 16]], num_bits: usize, block_size: usize) {
+    println!("Size of out is: {} x {}", out.len(), out[0].len() * 8);
+    println!("Size of t is: {} x {}", t.len(), t[0].len() * 8);
     for row in 0..num_bits {
         for col in 0..block_size {
-            let bit = (t[col][row / 8] >> (row % 8)) & 1;
-            out[row * block_size / num_bits + col / 8][col % 8] |= bit << (col % 8);
+            let idx = row * block_size + col;
+            let bit = (t[idx / 128][(idx / 8) % 16] >> (idx % 8)) & 1;
+            let new_idx = col * num_bits + row;
+            out[new_idx / 128][(new_idx / 8) % 16] |= bit << (new_idx % 8);
         }
     }
 }
