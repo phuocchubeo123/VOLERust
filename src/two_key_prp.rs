@@ -1,4 +1,4 @@
-use aes::Aes128;
+use aes::Aes256;
 use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
@@ -8,89 +8,68 @@ pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
 pub struct TwoKeyPRP {
-    aes_keys_0: [Aes128; 4], // AES keys for the first child
-    aes_keys_1: [Aes128; 4], // AES keys for the second child
 }
 
 impl TwoKeyPRP {
-    /// Create a new `TwoKeyPRP` instance with 8 AES-128 keys (4 for each child).
-    pub fn new(keys_0: [&[u8; 16]; 4], keys_1: [&[u8; 16]; 4]) -> Self {
-        let aes_keys_0 = keys_0.map(|key| Aes128::new(GenericArray::from_slice(key)));
-        let aes_keys_1 = keys_1.map(|key| Aes128::new(GenericArray::from_slice(key)));
-        Self {
-            aes_keys_0,
-            aes_keys_1,
-        }
-    }
-
-    /// Feistel round function: AES encryption followed by XOR.
-    fn feistel_round(
-        &self,
-        round_key: &Aes128,
-        left: &mut [u8; 16],
-        right: &mut [u8; 16],
-    ) {
-        let mut tmp = GenericArray::clone_from_slice(right);
-        round_key.encrypt_block(&mut tmp);
-
-        for i in 0..16 {
-            right[i] = left[i] ^ tmp[i];
-            left[i] = right[i];
-        }
-    }
-
-    /// Perform 256-to-256 PRP using Feistel network with 4 rounds.
-    fn encrypt_feistel(&self, input: &[u8; 32], aes_keys: &[Aes128; 4]) -> [u8; 32] {
-        let (left, right) = input.split_at(16);
-        let mut left_block = [0u8; 16];
-        let mut right_block = [0u8; 16];
-        left_block.copy_from_slice(left);
-        right_block.copy_from_slice(right);
-
-        for round in 0..4 {
-            if round % 2 == 0 {
-                self.feistel_round(&aes_keys[round], &mut left_block, &mut right_block);
-            } else {
-                self.feistel_round(&aes_keys[round], &mut right_block, &mut left_block);
-            }
-        }
-
-        let mut result = [0u8; 32];
-        result[..16].copy_from_slice(&left_block);
-        result[16..].copy_from_slice(&right_block);
-        result
-    }
-
     /// Expand a single parent field element into two child field elements.
     pub fn node_expand_1to2(&self, children: &mut [FE; 2], parent: &FE) {
         let parent_bytes = parent.to_bytes_le();
+        let aes_key = Aes256::new(GenericArray::from_slice(&parent_bytes));
 
-        // Encrypt using two Feistel networks
-        let encrypted_0 = self.encrypt_feistel(&parent_bytes, &self.aes_keys_0);
-        let encrypted_1 = self.encrypt_feistel(&parent_bytes, &self.aes_keys_1);
+        // Prepare a buffer for 4 blocks (16 bytes each)
+        let mut expanded_parent: [_; 4] = core::array::from_fn(|i| GenericArray::clone_from_slice(&[i as u8; 16]));
 
-        // Convert the encrypted results into field elements
-        children[0] = FE::from_bytes_le(&encrypted_0).unwrap();
-        children[1] = FE::from_bytes_le(&encrypted_1).unwrap();
+        // Encrypt the 4 blocks using the AES key
+        aes_key.encrypt_blocks(&mut expanded_parent);
+
+        // Combine the first 2 blocks into `left_child` (32 bytes)
+        let left_child_bytes = [expanded_parent[0].as_slice(), expanded_parent[1].as_slice()].concat();
+
+        // Combine the next 2 blocks into `right_child` (32 bytes)
+        let right_child_bytes = [expanded_parent[2].as_slice(), expanded_parent[3].as_slice()].concat();
+
+        // Convert the byte arrays back into field elements
+        children[0] = FE::from_bytes_le(&left_child_bytes).expect("Failed to convert left_child bytes to field element");
+        children[1] = FE::from_bytes_le(&right_child_bytes).expect("Failed to convert right_child bytes to field element");
     }
 
-    /// Expand two parent field elements into four child field elements.
+    /// Unrolled version: Expand two parent field elements into four child field elements.
     pub fn node_expand_2to4(&self, children: &mut [FE; 4], parents: &[FE; 2]) {
-        for (i, parent) in parents.iter().enumerate() {
-            let mut temp_children = [FE::zero(); 2];
-            self.node_expand_1to2(&mut temp_children, parent);
-            children[i * 2] = temp_children[0].clone();
-            children[i * 2 + 1] = temp_children[1].clone();
-        }
+        let mut temp_children = [FE::zero(); 2];
+
+        // Expand first parent into the first two children
+        self.node_expand_1to2(&mut temp_children, &parents[0]);
+        children[0] = temp_children[0].clone();
+        children[1] = temp_children[1].clone();
+
+        // Expand second parent into the next two children
+        self.node_expand_1to2(&mut temp_children, &parents[1]);
+        children[2] = temp_children[0].clone();
+        children[3] = temp_children[1].clone();
     }
 
-    /// Expand four parent field elements into eight child field elements.
+    /// Unrolled version: Expand four parent field elements into eight child field elements.
     pub fn node_expand_4to8(&self, children: &mut [FE; 8], parents: &[FE; 4]) {
-        for (i, parent) in parents.iter().enumerate() {
-            let mut temp_children = [FE::zero(); 2];
-            self.node_expand_1to2(&mut temp_children, parent);
-            children[i * 2] = temp_children[0].clone();
-            children[i * 2 + 1] = temp_children[1].clone();
-        }
+        let mut temp_children = [FE::zero(); 2];
+
+        // Expand first parent into the first two children
+        self.node_expand_1to2(&mut temp_children, &parents[0]);
+        children[0] = temp_children[0].clone();
+        children[1] = temp_children[1].clone();
+
+        // Expand second parent into the next two children
+        self.node_expand_1to2(&mut temp_children, &parents[1]);
+        children[2] = temp_children[0].clone();
+        children[3] = temp_children[1].clone();
+
+        // Expand third parent into the next two children
+        self.node_expand_1to2(&mut temp_children, &parents[2]);
+        children[4] = temp_children[0].clone();
+        children[5] = temp_children[1].clone();
+
+        // Expand fourth parent into the last two children
+        self.node_expand_1to2(&mut temp_children, &parents[3]);
+        children[6] = temp_children[0].clone();
+        children[7] = temp_children[1].clone();
     }
 }

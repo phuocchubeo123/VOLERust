@@ -55,3 +55,18 @@ name = "receiver_base_svole"
 
 [[bin]]
 name = "test_two_key_prp"
+
+[[bin]]
+name = "test_ccrh"
+
+[[bin]]
+name = "sender_otpre"
+
+[[bin]]
+name = "receiver_otpre"
+
+[[bin]]
+name = "sender_iknp"
+
+[[bin]]
+name = "receiver_iknp"

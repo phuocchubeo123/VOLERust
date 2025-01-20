@@ -99,4 +99,32 @@ impl PRG {
         }
     }
 
+    pub fn random_bool_array(&mut self, bits: &mut [bool]) {
+        let mut blocks = vec![[0u8; 16]; (bits.len() + 127) / 128];
+        self.random_block(&mut blocks); // Use the AES-based random_block generator
+
+        bits.iter_mut().enumerate().for_each(|(i, bit)| {
+            let block_index = i / 128;
+            let bit_offset = i % 128;
+            let byte_index = bit_offset / 8;
+            let bit_index = bit_offset % 8;
+
+            *bit = (blocks[block_index][byte_index] & (1 << bit_index)) != 0;
+        });
+    }
+
+    pub fn fill_bytes(&mut self, buffer: &mut [u8]) {
+        let block_count = (buffer.len() + 15) / 16;
+        let mut blocks = vec![[0u8; 16]; block_count];
+
+        // Generate random blocks using AES
+        self.random_block(&mut blocks);
+
+        // Flatten blocks into the buffer
+        for (i, byte) in buffer.iter_mut().enumerate() {
+            let block_index = i / 16;
+            let byte_index = i % 16;
+            *byte = blocks[block_index][byte_index];
+        }
+    }
 }

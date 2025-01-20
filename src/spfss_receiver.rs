@@ -1,4 +1,4 @@
-use crate::twokeyprp::TwoKeyPRP;
+use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;

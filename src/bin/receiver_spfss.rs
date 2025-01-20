@@ -1,6 +1,8 @@
-extern crate your_crate_name; // Replace with your actual crate name
-use your_crate_name::spfss_recver_fp::SpfssRecverFp;
-use your_crate_name::comm_channel::TcpChannel; // Replace with your communication channel module
+extern crate vole_rust; 
+extern crate lambdaworks_math;
+
+use vole_rust::spfss_receiver::SpfssRecverFp;
+use vole_rust::comm_channel::TcpChannel; 
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 

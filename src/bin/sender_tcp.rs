@@ -20,7 +20,7 @@ pub fn rand_field_element() -> FE {
 }
 
 fn main() {
-    let element_count = 10_000; // Number of elements to send
+    let element_count = 100_000; // Number of elements to send
 
     // Connect to the receiver
     let stream = TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to receiver");
@@ -39,4 +39,13 @@ fn main() {
     let duration = start.elapsed();
 
     println!("Sent {} elements in {:?}", element_count, duration);
+
+     // Bits to send
+    let bits_to_send = vec![true, false, true, true, false, true, false, false, true, true];
+    println!("Sender: Sending bits: {:?}", bits_to_send);
+
+    // Send the bits
+    channel.send_bits(&bits_to_send).expect("Failed to send bits");
+
+    println!("Sender: Bits sent successfully.");
 }

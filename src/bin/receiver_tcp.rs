@@ -12,7 +12,7 @@ pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
 fn main() {
-    let element_count = 10_000; // Number of elements to receive
+    let element_count = 100_000; // Number of elements to receive
 
     // Listen for the sender
     let listener = TcpListener::bind("127.0.0.1:8080").expect("Failed to bind to port");
@@ -27,4 +27,10 @@ fn main() {
     let duration = start.elapsed();
 
     println!("Received {} elements in {:?}", elements.len(), duration);
+
+    // Receive the bits
+    let received_bits = channel.receive_bits().expect("Failed to receive bits");
+
+    println!("Receiver: Received bits: {:?}", received_bits);
+    println!("Receiver: Bits received successfully.");
 }

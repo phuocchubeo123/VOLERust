@@ -1,4 +1,4 @@
-use crate::twokeyprp::TwoKeyPRP;
+use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
@@ -40,7 +40,7 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
         }
     }
 
-    /// Generate GGM tree and prepare messages for OT.
+    /// Sender GGM tree infos thru OT
     pub fn compute(&mut self, ggm_tree_mem: &mut [FE], secret: FE, gamma: FE) {
         self.delta = secret.clone();
         self.ggm_tree_gen(ggm_tree_mem, secret, gamma);

@@ -5,7 +5,7 @@ use p256::elliptic_curve::{Field, Group};
 use p256::{Scalar, AffinePoint, ProjectivePoint};
 
 pub struct OTCO<'a, IO> {
-    io: &'a mut IO,
+    pub(crate) io: &'a mut IO,
 }
 
 impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {

@@ -24,6 +24,55 @@ impl TcpChannel {
 }
 
 impl CommunicationChannel for TcpChannel {
+    /// Sends an array of bits over the TCP channel.
+    fn send_bits(&mut self, bits: &[bool]) -> std::io::Result<()> {
+        // Serialize bits into bytes
+        let mut byte_array = Vec::with_capacity((bits.len() + 7) / 8);
+        let mut current_byte = 0u8;
+        for (i, &bit) in bits.iter().enumerate() {
+            if bit {
+                current_byte |= 1 << (i % 8);
+            }
+            if i % 8 == 7 || i == bits.len() - 1 {
+                byte_array.push(current_byte);
+                current_byte = 0;
+            }
+        }
+
+        // Send the total number of bits (as u64) and the byte array
+        let num_bits = bits.len() as u64;
+        self.stream.write_all(&num_bits.to_le_bytes())?;
+        self.stream.write_all(&byte_array)?;
+
+        Ok(())
+    }
+
+    /// Receives an array of bits over the TCP channel.
+    fn receive_bits(&mut self) -> std::io::Result<Vec<bool>> {
+        // Read the total number of bits (u64)
+        let mut num_bits_buf = [0u8; 8];
+        self.stream.read_exact(&mut num_bits_buf)?;
+        let num_bits = u64::from_le_bytes(num_bits_buf) as usize;
+
+        // Read the serialized byte array
+        let num_bytes = (num_bits + 7) / 8;
+        let mut byte_array = vec![0u8; num_bytes];
+        self.stream.read_exact(&mut byte_array)?;
+
+        // Deserialize bytes back into bits
+        let mut bits = Vec::with_capacity(num_bits);
+        for (i, &byte) in byte_array.iter().enumerate() {
+            for j in 0..8 {
+                if i * 8 + j >= num_bits {
+                    break;
+                }
+                bits.push((byte & (1 << j)) != 0);
+            }
+        }
+
+        Ok(bits)
+    }
+
     /// Sends a vector of STARK-252 field elements over the TCP channel.
     fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
         // Define the chunk size (in bytes). For example, 32 elements (32 bytes each) per chunk.
