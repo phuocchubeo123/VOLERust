@@ -1,11 +1,7 @@
 use crate::hash::CCRH;
 use crate::comm_channel::CommunicationChannel;
-use crate::socket_channel::TcpChannel;
 
-// This is SO suspicious. Need to review in the future.
-
-pub struct OTPre<'a, IO: CommunicationChannel> {
-    io: &'a mut IO,
+pub struct OTPre {
     pre_data: Vec<[u8; 16]>,
     bits: Vec<bool>,
     n: usize,
@@ -15,12 +11,11 @@ pub struct OTPre<'a, IO: CommunicationChannel> {
     delta: Option<[u8; 16]>,
 }
 
-impl<'a, IO: CommunicationChannel> OTPre<'a, IO> {
+impl OTPre {
     /// Create a new `OTPre` instance
-    pub fn new(io: &'a mut IO, length: usize, times: usize) -> Self {
+    pub fn new(length: usize, times: usize) -> Self {
         let n = length * times;
         Self {
-            io,
             pre_data: vec![[0u8; 16]; 2 * n],
             bits: vec![false; n],
             n,
@@ -32,9 +27,8 @@ impl<'a, IO: CommunicationChannel> OTPre<'a, IO> {
     }
 
     /// Receives choice bits from the receiver and updates internal state
-    pub fn choices_sender(&mut self) {
-        // Receive choice bits from the receiver
-        let received_bits = self.io.receive_bits().expect("Failed to receive bits");
+    pub fn choices_sender<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+        let received_bits = io.receive_bits().expect("Failed to receive bits");
         for (i, &bit) in received_bits.iter().enumerate() {
             self.bits[self.count + i] = bit;
         }
@@ -42,13 +36,12 @@ impl<'a, IO: CommunicationChannel> OTPre<'a, IO> {
     }
 
     /// Sends the adjusted choice bits to the sender
-    pub fn choices_recver(&mut self, choices: &[bool]) {
+    pub fn choices_recver<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool]) {
         let mut adjusted_bits = vec![false; self.length];
         for i in 0..self.length {
             adjusted_bits[i] = choices[i] ^ self.bits[self.count + i];
         }
-        // Send adjusted choice bits to the sender
-        self.io.send_bits(&adjusted_bits).expect("Failed to send bits");
+        io.send_bits(&adjusted_bits).expect("Failed to send bits");
         self.count += self.length;
     }
 
@@ -80,7 +73,14 @@ impl<'a, IO: CommunicationChannel> OTPre<'a, IO> {
     }
 
     /// Send data based on precomputed values
-    pub fn send(&mut self, m0: &[[u8; 16]], m1: &[[u8; 16]], length: usize, s: usize) {
+    pub fn send<IO: CommunicationChannel>(
+        &mut self,
+        io: &mut IO,
+        m0: &[[u8; 16]],
+        m1: &[[u8; 16]],
+        length: usize,
+        s: usize,
+    ) {
         let mut pad = [[0u8; 16]; 2];
         let k = s * length;
 
@@ -93,17 +93,24 @@ impl<'a, IO: CommunicationChannel> OTPre<'a, IO> {
                 pad[0] = CCRH::xor_block(&m0[i], &self.pre_data[idx + self.n]);
                 pad[1] = CCRH::xor_block(&m1[i], &self.pre_data[idx]);
             }
-            self.io.send_data(&pad);
+            io.send_data(&pad);
         }
     }
 
     /// Receive and reconstruct data based on precomputed values
-    pub fn recv(&mut self, data: &mut [[u8; 16]], b: &[bool], length: usize, s: usize) {
+    pub fn recv<IO: CommunicationChannel>(
+        &mut self,
+        io: &mut IO,
+        data: &mut [[u8; 16]],
+        b: &[bool],
+        length: usize,
+        s: usize,
+    ) {
         let mut pad = [[0u8; 16]; 2];
         let k = s * length;
 
         for i in 0..length {
-            let received = self.io.receive_data();
+            let received = io.receive_data();
             pad.copy_from_slice(&received);
 
             let idx = if b[i] { 1 } else { 0 };

@@ -73,3 +73,9 @@ name = "receiver_iknp"
 
 [[bin]]
 name = "test_mul"
+
+[[bin]]
+name = "sender_base_cot"
+
+[[bin]]
+name = "receiver_base_cot"

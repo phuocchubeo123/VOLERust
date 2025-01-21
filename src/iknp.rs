@@ -8,7 +8,7 @@ const NUM_BITS: usize = 128;
 
 
 pub struct IKNP<'a, IO: CommunicationChannel> {
-    base_ot: Option<OTCO<'a, IO>>,
+    pub(crate) base_ot: OTCO<'a, IO>,
     delta: Option<[u8; 16]>,
     setup: bool,
     s: [bool; NUM_BITS],
@@ -24,7 +24,7 @@ pub struct IKNP<'a, IO: CommunicationChannel> {
 impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
     pub fn new(io: &'a mut IO, malicious: bool) -> Self {
         Self {
-            base_ot: Some(OTCO::new(io)),
+            base_ot: OTCO::new(io),
             delta: None,
             setup: false,
             s: [false; NUM_BITS],
@@ -50,9 +50,9 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
 
         if let Some(in_k0) = in_k0 {
             self.k0.copy_from_slice(in_k0);
-        } else if let Some(base_ot) = &mut self.base_ot {
+        } else {
             self.k0.clear();
-            base_ot.recv(&self.s, &mut self.k0);
+            self.base_ot.recv(&self.s, &mut self.k0);
         }
 
         self.g0 = Some(
@@ -75,11 +75,11 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         if let (Some(in_k0), Some(in_k1)) = (in_k0, in_k1) {
             self.k0.copy_from_slice(in_k0);
             self.k1.copy_from_slice(in_k1);
-        } else if let Some(base_ot) = &mut self.base_ot {
+        } else {
             let mut prg = PRG::new(None, 0);
             prg.random_block(&mut self.k0);
             prg.random_block(&mut self.k1);
-            base_ot.send(&self.k0, &self.k1);
+            self.base_ot.send(&self.k0, &self.k1);
         }
 
         self.g0 = Some(
@@ -136,12 +136,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
 
         let mut t = vec![[0u8; 16]; BLOCK_SIZE];
         let mut res = vec![[0u8; 16]; BLOCK_SIZE];
-        let mut tmp = if let Some(base_ot) = &mut self.base_ot {
-            println!("There is base ot!");
-            base_ot.io.receive_data()
-        } else {
-            vec![[0u8; 16]; BLOCK_SIZE]
-        };
+        let mut tmp = self.base_ot.io.receive_data();
 
         // println!("Received tmp: {:?}", &tmp[..5]);
 
@@ -228,9 +223,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             }
         }
 
-        if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.send_data(&tmp);
-        }
+        self.base_ot.io.send_data(&tmp);
 
         // println!("Sent tmp: {:?}", &tmp[..5]);
 
@@ -268,10 +261,8 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         q[0] = [0u8; 16];
         q[1] = [0u8; 16];
 
-        if let Some(base_ot) = &mut self.base_ot {
-            seed2 = base_ot.io.receive_data()[0];
-            base_ot.io.flush();
-        }
+        seed2 = self.base_ot.io.receive_data()[0];
+        self.base_ot.io.flush();
 
         // println!("Seed received: {:?}", seed2);
 
@@ -299,16 +290,14 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
 
         // println!("chi: {:?}, local_out: {:?}", chi, self.local_out);
 
-        if let Some(base_ot) = &mut self.base_ot {
-            x = base_ot.io.receive_data()[0];
-            println!("Received x: {:?}", x);
-            // Receive t
-            let received_data: Vec<[u8; 16]> = base_ot.io.receive_data();
-            assert_eq!(received_data.len(), 2, "Expected exactly 2 elements in received data");
-            t = [received_data[0], received_data[1]]; // Convert Vec to array
+        x = self.base_ot.io.receive_data()[0];
+        println!("Received x: {:?}", x);
+        // Receive t
+        let received_data: Vec<[u8; 16]> = self.base_ot.io.receive_data();
+        assert_eq!(received_data.len(), 2, "Expected exactly 2 elements in received data");
+        t = [received_data[0], received_data[1]]; // Convert Vec to array
 
-            println!("Received t: {:?}", t);
-        }
+        println!("Received t: {:?}", t);
 
         let delta = self.delta.expect("Delta must be set during setup");
         mul128(&x, &delta, &mut tmp);
@@ -336,10 +325,8 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
 
         // println!("Seed sent: {:?}", seed2);
 
-        if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.send_data(&[seed2]);
-            base_ot.io.flush();
-        }
+        self.base_ot.io.send_data(&[seed2]);
+        self.base_ot.io.flush();
 
         let mut chi_prg = PRG::new(Some(&seed2), 0);
 
@@ -389,10 +376,8 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             }
         }
 
-        if let Some(base_ot) = &mut self.base_ot {
-            base_ot.io.send_data(&[x]);
-            base_ot.io.send_data(&t);
-        }
+        self.base_ot.io.send_data(&[x]);
+        self.base_ot.io.send_data(&t);
 
         println!("Current x: {:?}", x);
         println!("Current t: {:?}", t);
