@@ -1,9 +1,11 @@
 extern crate vole_rust;
+extern crate rand;
 
 use vole_rust::iknp::IKNP;
 use vole_rust::comm_channel::CommunicationChannel;
 use vole_rust::socket_channel::TcpChannel;
 use std::net::TcpListener;
+use rand::Rng;
 
 fn main() {
     // Bind and wait for a connection from the sender
@@ -14,11 +16,12 @@ fn main() {
     let mut receiver_iknp = IKNP::new(&mut io, true);
     receiver_iknp.setup_recv(None, None);
 
-    let length = 2048;
+    const length: usize = 2048;
     let mut data = vec![[0u8; 16]; length];
-    let r = vec![true; length]; // Example choice bits
+    let mut rng = rand::thread_rng();
+    let r: [bool; length] = [(); length].map(|_| rng.gen_bool(0.5)); // Example choice bits
 
     receiver_iknp.recv_cot(&mut data, &r, length);
 
-    println!("Receiver COT data: {:?}", data);
+    println!("Receiver COT data: {:?}", &data[..5]);
 }

@@ -17,5 +17,5 @@ fn main() {
     let mut data = vec![[0u8; 16]; length];
     sender_iknp.send_cot(&mut data, length);
 
-    println!("Sender COT data: {:?}", data);
+    println!("Sender COT data: {:?}", &data[..5]);
 }

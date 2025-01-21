@@ -70,3 +70,6 @@ name = "sender_iknp"
 
 [[bin]]
 name = "receiver_iknp"
+
+[[bin]]
+name = "test_mul"
