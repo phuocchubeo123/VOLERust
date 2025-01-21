@@ -4,16 +4,16 @@ use crate::prg::PRG;
 use std::convert::TryInto;
 
 const BLOCK_SIZE: usize = 1024 * 2;
-const NUM_BITS: usize = 128;
+const NUM_BITS: usize = 256;
 
 
 pub struct IKNP<'a, IO: CommunicationChannel> {
     pub(crate) base_ot: OTCO<'a, IO>,
-    delta: Option<[u8; 16]>,
+    delta: Option<[u8; 32]>,
     setup: bool,
     s: [bool; NUM_BITS],
-    local_r: [bool; 256],
-    local_out: Vec<[u8; 16]>,
+    local_r: [bool; 2*NUM_BITS],
+    local_out: Vec<[u8; 32]>,
     g0: Option<Vec<PRG>>,
     g1: Option<Vec<PRG>>,
     malicious: bool,
@@ -28,8 +28,8 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             delta: None,
             setup: false,
             s: [false; NUM_BITS],
-            local_r: [false; 256],
-            local_out: vec![[0u8; 16]; BLOCK_SIZE],
+            local_r: [false; 2*NUM_BITS],
+            local_out: vec![[0u8; 32]; BLOCK_SIZE],
             g0: None,
             g1: None,
             malicious,
@@ -60,7 +60,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
                 .enumerate()
                 .map(|(i, key)| {
                     let mut prg = PRG::new(None, (i + (self.s[i] as usize) * NUM_BITS) as u64);
-                    prg.reseed(key, 0);
+                    prg.reseed(key, (i + (self.s[i] as usize) * NUM_BITS) as u64);
                     prg
                 })
                 .collect(),
@@ -87,7 +87,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
                 .enumerate()
                 .map(|(i, key)| {
                     let mut prg = PRG::new(None, i as u64);
-                    prg.reseed(key, 0);
+                    prg.reseed(key, i as u64);
                     prg
                 })
                 .collect(),
@@ -97,25 +97,25 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
                 .enumerate()
                 .map(|(i, key)| {
                     let mut prg = PRG::new(None, (i + NUM_BITS) as u64);
-                    prg.reseed(key, 0);
+                    prg.reseed(key, (i + NUM_BITS) as u64);
                     prg
                 })
                 .collect(),
         );
     }
 
-    pub fn send_pre(&mut self, out: &mut [[u8; 16]], length: usize) {
+    pub fn send_pre(&mut self, out: &mut [[u8; 32]], length: usize) {
         if !self.setup {
             self.setup_send(None, None);
         }
 
         let mut idx = 0;
-        while idx + 16 <= length / 128 {
-            self.send_pre_block(&mut out[idx * 128..(idx + 16) * 128], 2048);
-            idx += 16;
+        while idx + BLOCK_SIZE <= length {
+            self.send_pre_block(&mut out[idx..idx+BLOCK_SIZE], BLOCK_SIZE);
+            idx += BLOCK_SIZE;
         }
 
-        let remaining = (length / 128 - idx) * 128;
+        let remaining = length - idx;
         if remaining > 0 {
             let mut temp_out = self.local_out.clone();
             self.send_pre_block(&mut temp_out, remaining);
@@ -125,18 +125,18 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         if self.malicious {
             println!("There is malicious!");
             let mut temp_out = self.local_out.clone();
-            self.send_pre_block(&mut temp_out, 2 * 128);
+            self.send_pre_block(&mut temp_out, 2 * NUM_BITS);
             self.local_out.copy_from_slice(&temp_out);
         }
     }
 
-    fn send_pre_block(&mut self, out: &mut [[u8; 16]], length: usize) {
+    fn send_pre_block(&mut self, out: &mut [[u8; 32]], length: usize) {
         let local_block_size = (length + NUM_BITS - 1) / NUM_BITS * NUM_BITS;
         println!("local_block_size: {}", local_block_size);
 
-        let mut t = vec![[0u8; 16]; BLOCK_SIZE];
-        let mut res = vec![[0u8; 16]; BLOCK_SIZE];
-        let mut tmp = self.base_ot.io.receive_data();
+        let mut t = vec![[0u8; 32]; BLOCK_SIZE];
+        let mut res = vec![[0u8; 32]; BLOCK_SIZE];
+        let mut tmp = self.base_ot.io.receive_32byte_block();
 
         // println!("Received tmp: {:?}", &tmp[..5]);
 
@@ -146,7 +146,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
                 let start = i * BLOCK_SIZE / NUM_BITS;
                 let end = start + local_block_size / NUM_BITS;
                 // println!("i, start, end: {}, {}, {}", i, start, end);
-                prg.random_block(&mut t[start..end]);
+                prg.random_32byte_block(&mut t[start..end]);
                 // println!("PRG: {:?}", t[start]);
                 if self.s[i] {
                     xor_blocks_arr(&mut res[start..end], &t[start..end], &tmp[start..end]);
@@ -160,32 +160,29 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         transpose(out, &res, NUM_BITS, BLOCK_SIZE);
     }
 
-    pub fn recv_pre(&mut self, out: &mut [[u8; 16]], r: &[bool], length: usize) {
+    pub fn recv_pre(&mut self, out: &mut [[u8; 32]], r: &[bool], length: usize) {
         if !self.setup {
             self.setup_recv(None, None);
         }
 
-        let mut idx = 0;
-        let mut block_r = vec![[0u8; 16]; (length + NUM_BITS - 1) / NUM_BITS];
+        let mut block_r = vec![[0u8; 32]; (length + NUM_BITS - 1) / NUM_BITS];
 
         for (i, chunk) in r.chunks(NUM_BITS).enumerate() {
             block_r[i] = bool_to_block(chunk);
         }
 
-        while idx + 16 <= length / 128 {
-            self.recv_pre_block(
-                &mut out[(idx * 128)..(idx + 16) * 128], 
-                &block_r[idx..idx + 16], 
-                2048,
-            );
-            idx += 16;
+        let mut idx = 0;
+
+        while idx + BLOCK_SIZE <= length {
+            self.recv_pre_block(&mut out[idx..idx+BLOCK_SIZE], &block_r[idx / NUM_BITS..(idx + BLOCK_SIZE) / NUM_BITS], BLOCK_SIZE);
+            idx += BLOCK_SIZE;
         }
 
-        let remaining = (length / 128 - idx) * 128;
+        let remaining = length - idx;
         if remaining > 0 {
             println!("There is remaining!");
             let mut temp_out = self.local_out.clone();
-            self.recv_pre_block(&mut temp_out, &block_r[idx..], remaining);
+            self.recv_pre_block(&mut temp_out, &block_r[idx / NUM_BITS..], remaining);
             out[idx..].copy_from_slice(&temp_out[..remaining]);
         }
 
@@ -193,20 +190,20 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
             println!("There is malicious!");
             let mut prg = PRG::new(None, 0);
             prg.random_bool_array(&mut self.local_r);
-            let mut local_r_block = vec![[0u8; 16]; 2];
+            let mut local_r_block = vec![[0u8; 32]; 2];
             for (i, chunk) in self.local_r.chunks(NUM_BITS).enumerate() {
                 local_r_block[i] = bool_to_block(chunk);
             }
             let mut temp_out = self.local_out.clone();
-            self.recv_pre_block(&mut temp_out, &local_r_block, 2 * 128);
+            self.recv_pre_block(&mut temp_out, &local_r_block, 2 * NUM_BITS);
             self.local_out.copy_from_slice(&temp_out);
         }
     }
 
-    fn recv_pre_block(&mut self, out: &mut [[u8; 16]], r: &[[u8; 16]], length: usize) {
-        let mut t = vec![[0u8; 16]; BLOCK_SIZE];
-        let mut tmp = vec![[0u8; 16]; BLOCK_SIZE];
-        let mut res = vec![[0u8; 16]; BLOCK_SIZE];
+    fn recv_pre_block(&mut self, out: &mut [[u8; 32]], r: &[[u8; 32]], length: usize) {
+        let mut t = vec![[0u8; 32]; BLOCK_SIZE];
+        let mut tmp = vec![[0u8; 32]; BLOCK_SIZE];
+        let mut res = vec![[0u8; 32]; BLOCK_SIZE];
         let local_block_size = (length + NUM_BITS - 1) / NUM_BITS * NUM_BITS;
 
         if let (Some(prgs_g0), Some(prgs_g1)) = (&mut self.g0, &mut self.g1) {
@@ -214,23 +211,23 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
                 let start = i * BLOCK_SIZE / NUM_BITS;
                 let end = start + local_block_size / NUM_BITS;
                 println!("Start end: {}, {}", start, end);
-                prg0.random_block(&mut t[start..end]);
+                prg0.random_32byte_block(&mut t[start..end]);
                 // println!("PRG: {:?}", t[start]);
-                prg1.random_block(&mut tmp[start..end]);
+                prg1.random_32byte_block(&mut tmp[start..end]);
                 xor_blocks_arr(&mut res[start..end], &t[start..end], &tmp[start..end]);
                 xor_blocks_arr(&mut tmp[start..end], &res[start..end], r);
                 // println!("t: {:?}", t[start]);
             }
         }
 
-        self.base_ot.io.send_data(&tmp);
+        self.base_ot.io.send_32byte_block(&tmp);
 
         // println!("Sent tmp: {:?}", &tmp[..5]);
 
         transpose(out, &t, NUM_BITS, BLOCK_SIZE);
     }
 
-    pub fn send_cot(&mut self, data: &mut [[u8; 16]], length: usize) {
+    pub fn send_cot(&mut self, data: &mut [[u8; 32]], length: usize) {
         self.send_pre(data, length);
 
         if self.malicious {
@@ -243,7 +240,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         }
     }
 
-    pub fn recv_cot(&mut self, data: &mut [[u8; 16]], r: &[bool], length: usize) {
+    pub fn recv_cot(&mut self, data: &mut [[u8; 32]], r: &[bool], length: usize) {
         self.recv_pre(data, r, length);
 
         if self.malicious {
@@ -251,15 +248,15 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         }
     }
 
-    pub fn send_check(&mut self, out: &[[u8; 16]], length: usize) -> bool {
+    pub fn send_check(&mut self, out: &[[u8; 32]], length: usize) -> bool {
         let mut seed2 = [0u8; 16];
-        let mut x = [0u8; 16];
-        let mut t = [[0u8; 16]; 2];
-        let mut q = [[0u8; 16]; 2];
-        let mut tmp = [[0u8; 16]; 2];
-        let mut chi = vec![[0u8; 16]; BLOCK_SIZE];
-        q[0] = [0u8; 16];
-        q[1] = [0u8; 16];
+        let mut x = [0u8; 32];
+        let mut t = [[0u8; 32]; 2];
+        let mut q = [[0u8; 32]; 2];
+        let mut tmp = [[0u8; 32]; 2];
+        let mut chi = vec![[0u8; 32]; BLOCK_SIZE];
+        q[0] = [0u8; 32];
+        q[1] = [0u8; 32];
 
         seed2 = self.base_ot.io.receive_data()[0];
         self.base_ot.io.flush();
@@ -269,7 +266,7 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         let mut chi_prg = PRG::new(Some(&seed2), 0);
 
         for i in 0..length / BLOCK_SIZE {
-            chi_prg.random_block(&mut chi);
+            chi_prg.random_32byte_block(&mut chi);
             // println!("Check chi: {:?}", &chi[..5]);
             vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE]);
             xor_blocks(&mut q, &tmp);
@@ -278,29 +275,29 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         let remain = length % BLOCK_SIZE;
         if remain != 0 {
             println!("There is remain in check!");
-            chi_prg.random_block(&mut chi);
+            chi_prg.random_32byte_block(&mut chi);
             vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[length - remain..]);
             xor_blocks(&mut q, &tmp);
         }
 
         // Handle local_out
-        chi_prg.random_block(&mut chi);
+        chi_prg.random_32byte_block(&mut chi);
         vector_inn_prdt_sum_no_red(&mut tmp, &chi, &self.local_out);
         xor_blocks(&mut q, &tmp);
 
         // println!("chi: {:?}, local_out: {:?}", chi, self.local_out);
 
-        x = self.base_ot.io.receive_data()[0];
+        x = self.base_ot.io.receive_32byte_block()[0];
         println!("Received x: {:?}", x);
         // Receive t
-        let received_data: Vec<[u8; 16]> = self.base_ot.io.receive_data();
+        let received_data: Vec<[u8; 32]> = self.base_ot.io.receive_32byte_block();
         assert_eq!(received_data.len(), 2, "Expected exactly 2 elements in received data");
         t = [received_data[0], received_data[1]]; // Convert Vec to array
 
         println!("Received t: {:?}", t);
 
         let delta = self.delta.expect("Delta must be set during setup");
-        mul128(&x, &delta, &mut tmp);
+        mul256(&x, &delta, &mut tmp);
         xor_blocks(&mut q, &tmp);
 
         println!("Current q: {:?}", q);
@@ -308,15 +305,15 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         cmp_blocks(&q, &t)
     }
 
-    pub fn recv_check(&mut self, out: &[[u8; 16]], r: &[bool], length: usize) {
-        let select = [[0u8; 16], [255u8; 16]]; // zero_block and all_one_block
+    pub fn recv_check(&mut self, out: &[[u8; 32]], r: &[bool], length: usize) {
+        let select = [[0u8; 32], [255u8; 32]]; // zero_block and all_one_block
         let mut seed2 = [0u8; 16];
-        let mut x = [0u8; 16];
-        let mut t = [[0u8; 16]; 2];
-        let mut tmp = [[0u8; 16]; 2];
-        let mut chi = vec![[0u8; 16]; BLOCK_SIZE];
-        t[0] = [0u8; 16];
-        t[1] = [0u8; 16];
+        let mut x = [0u8; 32];
+        let mut t = [[0u8; 32]; 2];
+        let mut tmp = [[0u8; 32]; 2];
+        let mut chi = vec![[0u8; 32]; BLOCK_SIZE];
+        t[0] = [0u8; 32];
+        t[1] = [0u8; 32];
 
         let mut prg = PRG::new(None, 0);
         let mut tmp_seed2 = [[0u8; 16]];
@@ -331,13 +328,13 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         let mut chi_prg = PRG::new(Some(&seed2), 0);
 
         for i in 0..length / BLOCK_SIZE {
-            chi_prg.random_block(&mut chi);
+            chi_prg.random_32byte_block(&mut chi);
             // println!("Check chi: {:?}", &chi[..5]);
             vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE]);
             xor_blocks(&mut t, &tmp);
 
             for j in 0..BLOCK_SIZE {
-                for byt in 0..16 {
+                for byt in 0..32 {
                     x[byt] = x[byt] ^ (chi[j][byt] & select[r[i * BLOCK_SIZE + j] as usize][byt]);
                 }
             }
@@ -349,19 +346,19 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
 
         let remain = length % BLOCK_SIZE;
         if remain != 0 {
-            chi_prg.random_block(&mut chi);
+            chi_prg.random_32byte_block(&mut chi);
             vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[length - remain..]);
             xor_blocks(&mut t, &tmp);
 
             for j in 0..remain {
-                for byt in 0..16 {
+                for byt in 0..32 {
                     x[byt] = x[byt] ^ (chi[j][byt] & select[r[length - remain + 1] as usize][byt]);
                 }
             }
         }
 
         // Handle local_out
-        chi_prg.random_block(&mut chi);
+        chi_prg.random_32byte_block(&mut chi);
         vector_inn_prdt_sum_no_red(&mut tmp, &chi, &self.local_out);
         xor_blocks(&mut t, &tmp);
 
@@ -371,49 +368,62 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         // println!("local r: {:?}", self.local_r);
 
         for j in 0..256 {
-            for byt in 0..16 {
+            for byt in 0..32 {
                 x[byt] = x[byt] ^ (chi[j][byt] & select[self.local_r[j] as usize][byt]);
             }
         }
 
-        self.base_ot.io.send_data(&[x]);
-        self.base_ot.io.send_data(&t);
+        self.base_ot.io.send_32byte_block(&[x]);
+        self.base_ot.io.send_32byte_block(&t);
 
         println!("Current x: {:?}", x);
         println!("Current t: {:?}", t);
     }
 }
 
-fn mul128(a: &[u8; 16], b: &[u8; 16], res: &mut [[u8; 16]; 2]) {
-    let mut r1 = [0u8; 16];
-    let mut r2 = [0u8; 16];
+fn mul256(a: &[u8; 32], b: &[u8; 32], res: &mut [[u8; 32]; 2]) {
+    let mask: u128 = 0xFFFFFFFFFFFFFFFF;
 
-    // Split inputs into low and high 64-bit parts
-    let a_low = u64::from_le_bytes(a[0..8].try_into().unwrap());
-    let a_high = u64::from_le_bytes(a[8..16].try_into().unwrap());
-    let b_low = u64::from_le_bytes(b[0..8].try_into().unwrap());
-    let b_high = u64::from_le_bytes(b[8..16].try_into().unwrap());
+    let mut r1 = [0u8; 32];
+    let mut r2 = [0u8; 32];
+
+    // Split inputs into 4 limbs (64 bits each)
+    let a0 = u64::from_le_bytes(a[0..8].try_into().unwrap());
+    let a1 = u64::from_le_bytes(a[8..16].try_into().unwrap());
+    let a2 = u64::from_le_bytes(a[16..24].try_into().unwrap());
+    let a3 = u64::from_le_bytes(a[24..32].try_into().unwrap());
+
+    let b0 = u64::from_le_bytes(b[0..8].try_into().unwrap());
+    let b1 = u64::from_le_bytes(b[8..16].try_into().unwrap());
+    let b2 = u64::from_le_bytes(b[16..24].try_into().unwrap());
+    let b3 = u64::from_le_bytes(b[24..32].try_into().unwrap());
 
     // Perform carry-less multiplications
-    let tmp3 = clmul64(a_low, b_low); // Low * Low
-    let tmp4 = clmul64(a_high, b_low); // High * Low
-    let tmp5 = clmul64(a_low, b_high); // Low * High
-    let tmp6 = clmul64(a_high, b_high); // High * High
+    let z00 = clmul64(a0, b0); // a0 * b0
+    let z01 = clmul64(a0, b1) ^ clmul64(a1, b0); // (a0 * b1) ^ (a1 * b0)
+    let z02 = clmul64(a0, b2) ^ clmul64(a1, b1) ^ clmul64(a2, b0); // Mixed terms
+    let z03 = clmul64(a0, b3) ^ clmul64(a1, b2) ^ clmul64(a2, b1) ^ clmul64(a3, b0);
+    let z04 = clmul64(a1, b3) ^ clmul64(a2, b2) ^ clmul64(a3, b1);
+    let z05 = clmul64(a2, b3) ^ clmul64(a3, b2);
+    let z06 = clmul64(a3, b3);
+    // println!("z06: {:?}", z06.to_le_bytes());
+    // println!("z06: {:?}", (z06 >> 64).to_le_bytes());
 
-    // Combine results
-    let mid = tmp4 ^ tmp5; // XOR intermediate results
-    let mid_low = mid & 0xFFFFFFFFFFFFFFFF; // Lower 64 bits shifted to high part of r1
-    let mid_high = mid >> 64; // Higher 64 bits shifted to low part of r2
+    // Assemble the result into two 256-bit limbs
+    r1[0..8].copy_from_slice(&((z00 & mask) as u64).to_le_bytes());
+    r1[8..16].copy_from_slice(&((z00 >> 64 ^ (z01 & mask)) as u64).to_le_bytes());
+    r1[16..24].copy_from_slice(&((z01 >> 64 ^ (z02 & mask)) as u64).to_le_bytes());
+    r1[24..32].copy_from_slice(&((z02 >> 64 ^ (z03 & mask)) as u64).to_le_bytes());
 
-    r1[0..8].copy_from_slice(&((tmp3 & 0xFFFFFFFFFFFFFFFF) as u64).to_le_bytes()); // Low part of tmp3 to r1
-    r1[8..16].copy_from_slice(&((tmp3 >> 64 ^ mid_low) as u64).to_le_bytes()); // High part of tmp3 ^ mid_low
-
-    r2[0..8].copy_from_slice(&(((tmp6 ^ mid_high) & 0xFFFFFFFFFFFFFFFF) as u64).to_le_bytes()); // Low part of tmp6 ^ mid_high
-    r2[8..16].copy_from_slice(&((tmp6 >> 64) as u64).to_le_bytes()); // High part of tmp6
+    r2[0..8].copy_from_slice(&((z03 >> 64 ^ (z04 & mask)) as u64).to_le_bytes());
+    r2[8..16].copy_from_slice(&((z04 >> 64 ^ (z05 & mask)) as u64).to_le_bytes());
+    r2[16..24].copy_from_slice(&((z05 >> 64 ^ (z06 & mask)) as u64).to_le_bytes());
+    r2[24..32].copy_from_slice(&((z06 >> 64) as u64).to_le_bytes());
 
     res[0] = r1;
     res[1] = r2;
 }
+
 
 // Helper function to perform 64-bit carry-less multiplication
 fn clmul64(a: u64, b: u64) -> u128 {
@@ -426,16 +436,16 @@ fn clmul64(a: u64, b: u64) -> u128 {
     result
 }
 
-fn vector_inn_prdt_sum_no_red(res: &mut [[u8; 16]; 2], a: &[[u8; 16]], b: &[[u8; 16]]) {
+fn vector_inn_prdt_sum_no_red(res: &mut [[u8; 32]; 2], a: &[[u8; 32]], b: &[[u8; 32]]) {
     // let mut r1 = [0u8; 16]; // Accumulator for first half
     // let mut r2 = [0u8; 16]; // Accumulator for second half
-    let mut r1 = [0u8; 16];
-    let mut r2 = [0u8; 16];
-    let mut r11 = [[0u8; 16]; 2];
+    let mut r1 = [0u8; 32];
+    let mut r2 = [0u8; 32];
+    let mut r11 = [[0u8; 32]; 2];
 
     for i in 0..a.len() {
-        mul128(&a[i], &b[i], &mut r11); // Perform 128-bit multiplication
-        for byt in 0..16 {
+        mul256(&a[i], &b[i], &mut r11); // Perform 128-bit multiplication
+        for byt in 0..32 {
             r1[byt] = r1[byt] ^ r11[0][byt];
             r2[byt] = r2[byt] ^ r11[1][byt];
         }
@@ -446,8 +456,8 @@ fn vector_inn_prdt_sum_no_red(res: &mut [[u8; 16]; 2], a: &[[u8; 16]], b: &[[u8;
 }
 
 // Helper functions
-fn bool_to_block(bits: &[bool]) -> [u8; 16] {
-    let mut block = [0u8; 16];
+fn bool_to_block(bits: &[bool]) -> [u8; 32] {
+    let mut block = [0u8; 32];
     for (i, &bit) in bits.iter().enumerate() {
         if bit {
             block[i / 8] |= 1 << (i % 8);
@@ -456,11 +466,11 @@ fn bool_to_block(bits: &[bool]) -> [u8; 16] {
     block
 }
 
-fn cmp_blocks(a: &[[u8; 16]], b: &[[u8; 16]]) -> bool {
+fn cmp_blocks(a: &[[u8; 32]], b: &[[u8; 32]]) -> bool {
     a == b
 }
 
-fn xor_blocks(a: &mut [[u8; 16]], b: &[[u8; 16]]) {
+fn xor_blocks(a: &mut [[u8; 32]], b: &[[u8; 32]]) {
     for i in 0..a.len() {
         a[i][0] ^= b[i][0];
         a[i][1] ^= b[i][1];
@@ -478,34 +488,109 @@ fn xor_blocks(a: &mut [[u8; 16]], b: &[[u8; 16]]) {
         a[i][13] ^= b[i][13];
         a[i][14] ^= b[i][14];
         a[i][15] ^= b[i][15];
+        a[i][16] ^= b[i][16];
+        a[i][17] ^= b[i][17];
+        a[i][18] ^= b[i][18];
+        a[i][19] ^= b[i][19];
+        a[i][20] ^= b[i][20];
+        a[i][21] ^= b[i][21];
+        a[i][22] ^= b[i][22];
+        a[i][23] ^= b[i][23];
+        a[i][24] ^= b[i][24];
+        a[i][25] ^= b[i][25];
+        a[i][26] ^= b[i][26];
+        a[i][27] ^= b[i][27];
+        a[i][28] ^= b[i][28];
+        a[i][29] ^= b[i][29];
+        a[i][30] ^= b[i][30];
+        a[i][31] ^= b[i][31];
     }
 }
 
-fn and_blocks(a: &mut [[u8; 16]], b: &[[u8; 16]]) {
-    for (x, y) in a.iter_mut().zip(b.iter()) {
-        for i in 0..16 {
-            x[i] &= y[i];
-        }
+fn and_blocks(a: &mut [[u8; 32]], b: &[[u8; 32]]) {
+    for i in 0..a.len() {
+        a[i][0] &= b[i][0];
+        a[i][1] &= b[i][1];
+        a[i][2] &= b[i][2];
+        a[i][3] &= b[i][3];
+        a[i][4] &= b[i][4];
+        a[i][5] &= b[i][5];
+        a[i][6] &= b[i][6];
+        a[i][7] &= b[i][7];
+        a[i][8] &= b[i][8];
+        a[i][9] &= b[i][9];
+        a[i][10] &= b[i][10];
+        a[i][11] &= b[i][11];
+        a[i][12] &= b[i][12];
+        a[i][13] &= b[i][13];
+        a[i][14] &= b[i][14];
+        a[i][15] &= b[i][15];
+        a[i][16] &= b[i][16];
+        a[i][17] &= b[i][17];
+        a[i][18] &= b[i][18];
+        a[i][19] &= b[i][19];
+        a[i][20] &= b[i][20];
+        a[i][21] &= b[i][21];
+        a[i][22] &= b[i][22];
+        a[i][23] &= b[i][23];
+        a[i][24] &= b[i][24];
+        a[i][25] &= b[i][25];
+        a[i][26] &= b[i][26];
+        a[i][27] &= b[i][27];
+        a[i][28] &= b[i][28];
+        a[i][29] &= b[i][29];
+        a[i][30] &= b[i][30];
+        a[i][31] &= b[i][31];
     }
 }
 
-fn xor_blocks_arr(res: &mut [[u8; 16]], x: &[[u8; 16]], y: &[[u8; 16]]) {
+fn xor_blocks_arr(res: &mut [[u8; 32]], x: &[[u8; 32]], y: &[[u8; 32]]) {
     for ((r, a), b) in res.iter_mut().zip(x.iter()).zip(y.iter()) {
-        for i in 0..16 {
-            r[i] = a[i] ^ b[i];
-        }
+        r[0] = a[0] ^ b[0];
+        r[1] = a[1] ^ b[1];
+        r[2] = a[2] ^ b[2];
+        r[3] = a[3] ^ b[3];
+        r[4] = a[4] ^ b[4];
+        r[5] = a[5] ^ b[5];
+        r[6] = a[6] ^ b[6];
+        r[7] = a[7] ^ b[7];
+        r[8] = a[8] ^ b[8];
+        r[9] = a[9] ^ b[9];
+        r[10] = a[10] ^ b[10];
+        r[11] = a[11] ^ b[11];
+        r[12] = a[12] ^ b[12];
+        r[13] = a[13] ^ b[13];
+        r[14] = a[14] ^ b[14];
+        r[15] = a[15] ^ b[15];
+        r[16] = a[16] ^ b[16];
+        r[17] = a[17] ^ b[17];
+        r[18] = a[18] ^ b[18];
+        r[19] = a[19] ^ b[19];
+        r[20] = a[20] ^ b[20];
+        r[21] = a[21] ^ b[21];
+        r[22] = a[22] ^ b[22];
+        r[23] = a[23] ^ b[23];
+        r[24] = a[24] ^ b[24];
+        r[25] = a[25] ^ b[25];
+        r[26] = a[26] ^ b[26];
+        r[27] = a[27] ^ b[27];
+        r[28] = a[28] ^ b[28];
+        r[29] = a[29] ^ b[29];
+        r[30] = a[30] ^ b[30];
+        r[31] = a[31] ^ b[31];
     }
 }
 
-fn transpose(out: &mut [[u8; 16]], t: &[[u8; 16]], num_bits: usize, block_size: usize) {
+
+fn transpose(out: &mut [[u8; 32]], t: &[[u8; 32]], num_bits: usize, block_size: usize) {
     println!("Size of out is: {} x {}", out.len(), out[0].len() * 8);
     println!("Size of t is: {} x {}", t.len(), t[0].len() * 8);
     for row in 0..num_bits {
         for col in 0..block_size {
             let idx = row * block_size + col;
-            let bit = (t[idx / 128][(idx / 8) % 16] >> (idx % 8)) & 1;
+            let bit = (t[idx / num_bits][(idx / 8) % 16] >> (idx % 8)) & 1;
             let new_idx = col * num_bits + row;
-            out[new_idx / 128][(new_idx / 8) % 16] |= bit << (new_idx % 8);
+            out[new_idx / num_bits][(new_idx / 8) % 16] |= bit << (new_idx % 8);
         }
     }
 }

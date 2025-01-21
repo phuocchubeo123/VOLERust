@@ -17,7 +17,7 @@ fn main() {
     receiver_iknp.setup_recv(None, None);
 
     const length: usize = 2048;
-    let mut data = vec![[0u8; 16]; length];
+    let mut data = vec![[0u8; 32]; length];
     let mut rng = rand::thread_rng();
     let r: [bool; length] = [(); length].map(|_| rng.gen_bool(0.5)); // Example choice bits
 

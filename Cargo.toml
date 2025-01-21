@@ -60,12 +60,6 @@ name = "test_two_key_prp"
 name = "test_ccrh"
 
 [[bin]]
-name = "sender_otpre"
-
-[[bin]]
-name = "receiver_otpre"
-
-[[bin]]
 name = "sender_iknp"
 
 [[bin]]

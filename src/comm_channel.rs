@@ -7,6 +7,8 @@ pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
 pub trait CommunicationChannel {
+    fn send_32byte_block(&mut self, data: &[[u8; 32]]);
+    fn receive_32byte_block(&mut self) -> Vec<[u8; 32]>;
     fn send_bits(&mut self, bits: &[bool]) -> std::io::Result<()>;
     fn receive_bits(&mut self) -> std::io::Result<Vec<bool>>;
     fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()>;

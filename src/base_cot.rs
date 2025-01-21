@@ -5,18 +5,22 @@ use crate::preot::OTPre;
 
 pub struct BaseCot<'a, IO: CommunicationChannel> {
     party: u8, // Alice: 0, Bob: 1
-    one: [u8; 16],
-    minus_one: [u8; 16],
-    ot_delta: Option<[u8; 16]>,
+    one: [u8; 32],
+    minus_one: [u8; 32],
+    ot_delta: Option<[u8; 32]>,
     iknp: IKNP<'a, IO>,
     malicious: bool,
 }
 
 impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
     pub fn new(party: u8, io: &'a mut IO, malicious: bool) -> Self {
-        let one = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // Little-endian representation of 1
+        let one = [
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]; // Little-endian representation of 1
         let minus_one = [
             254, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
         ]; // Little-endian representation of u128::MAX - 1
 
         BaseCot {
@@ -29,7 +33,7 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
         }
     }
 
-    pub fn cot_gen_pre(&mut self, deltain: Option<[u8; 16]>) {
+    pub fn cot_gen_pre(&mut self, deltain: Option<[u8; 32]>) {
         if let Some(deltain) = deltain {
             if self.party == 0 {
                 self.ot_delta = Some(deltain);
@@ -41,8 +45,8 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
         } else {
             if self.party == 0 {
                 let mut prg = PRG::new(None, 0);
-                let mut tmp = [[0u8; 16]];
-                prg.random_block(&mut tmp);
+                let mut tmp = [[0u8; 32]];
+                prg.random_32byte_block(&mut tmp);
                 let mut delta = tmp[0];
                 delta = bitwise_and(&delta, &self.minus_one);
                 delta = bitwise_xor(&delta, &self.one);
@@ -55,7 +59,7 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
         }
     }
 
-    pub fn cot_gen(&mut self, ot_data: &mut [[u8; 16]], size: usize, pre_bool: Option<&[bool]>) {
+    pub fn cot_gen(&mut self, ot_data: &mut [[u8; 32]], size: usize, pre_bool: Option<&[bool]>) {
         if self.party == 0 {
             self.iknp.send_cot(ot_data, size);
             self.iknp.base_ot.io.flush();
@@ -68,6 +72,8 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
             if let Some(pre_bool) = pre_bool {
                 if !self.malicious {
                     pre_bool_ini.copy_from_slice(pre_bool);
+                } else {
+                    prg.random_bool_array(&mut pre_bool_ini);
                 }
             } else {
                 prg.random_bool_array(&mut pre_bool_ini);
@@ -75,10 +81,13 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
 
             self.iknp.recv_cot(ot_data, &pre_bool_ini, size);
 
-            let ch = [[0u8; 16]; 2].map(|mut b| {
-                b[15] = 1;
-                b
-            });
+            let ch = [
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ]; 
+
             for (i, block) in ot_data.iter_mut().enumerate() {
                 *block = bitwise_xor(&bitwise_and(block, &self.minus_one), &ch[pre_bool_ini[i] as usize]);
             }
@@ -86,7 +95,7 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
     }
 
     pub fn cot_gen_preot(&mut self, pre_ot: &mut OTPre, size: usize, pre_bool: Option<&[bool]>) {
-        let mut ot_data = vec![[0u8; 16]; size]; // Allocate space for `ot_data`
+        let mut ot_data = vec![[0u8; 32]; size]; // Allocate space for `ot_data`
 
         if self.party == 0 {
             // ALICE
@@ -119,9 +128,12 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
             // Call `recv_cot` on `iknp`
             self.iknp.recv_cot(&mut ot_data, &pre_bool_ini, size);
 
-            let mut ch = [[0u8; 16]; 2];
-            ch[0] = [0u8; 16]; // Equivalent to `zero_block`
-            ch[1][0] = 1;     // Equivalent to `makeBlock(0, 1)`
+            let ch = [
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ]; 
 
             // Modify `ot_data` based on `pre_bool_ini`
             for (i, block) in ot_data.iter_mut().enumerate() {
@@ -134,20 +146,20 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
     }
 
     // Debugging check for COT
-    pub fn check_cot(&mut self, data: &[[u8; 16]], len: usize) -> bool {
+    pub fn check_cot(&mut self, data: &[[u8; 32]], len: usize) -> bool {
         if self.party == 0 {
             if let Some(delta) = self.ot_delta {
-                self.iknp.base_ot.io.send_data(&[delta]);
+                self.iknp.base_ot.io.send_32byte_block(&[delta]);
             }
-            self.iknp.base_ot.io.send_data(data);
+            self.iknp.base_ot.io.send_32byte_block(data);
             self.iknp.base_ot.io.flush();
             true
         } else {
-            let mut tmp = vec![[0u8; 16]; len];
-            let mut ch = [[0u8; 16]; 2];
-            ch[1] = self.iknp.base_ot.io.receive_data()[0];
-            ch[0] = [0u8; 16];
-            tmp = self.iknp.base_ot.io.receive_data();
+            let mut tmp = vec![[0u8; 32]; len];
+            let mut ch = [[0u8; 32]; 2];
+            ch[1] = self.iknp.base_ot.io.receive_32byte_block()[0];
+            ch[0] = [0u8; 32];
+            tmp = self.iknp.base_ot.io.receive_32byte_block();
             for i in 0..len {
                 tmp[i] = bitwise_xor(&tmp[i], &ch[get_lsb(&data[i]) as usize]);
             }
@@ -156,8 +168,8 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
     }
 }
 
-fn block_to_bool(block: &[u8; 16]) -> [bool; 128] {
-    let mut result = [false; 128];
+fn block_to_bool(block: &[u8; 32]) -> [bool; 256] {
+    let mut result = [false; 256];
     for (i, byte) in block.iter().enumerate() {
         for bit in 0..8 {
             result[i * 8 + bit] = (byte >> bit) & 1 != 0;
@@ -166,28 +178,36 @@ fn block_to_bool(block: &[u8; 16]) -> [bool; 128] {
     result
 }
 
-fn get_lsb(block: &[u8; 16]) -> bool {
+fn get_lsb(block: &[u8; 32]) -> bool {
     block[0] & 1 != 0
 }
 
-fn cmp_blocks(a: &[[u8; 16]], b: &[[u8; 16]]) -> bool {
+fn cmp_blocks(a: &[[u8; 32]], b: &[[u8; 32]]) -> bool {
     a == b
 }
 
-fn bitwise_xor(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
+fn bitwise_xor(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
     [
         a[0] ^ b[0], a[1] ^ b[1], a[2] ^ b[2], a[3] ^ b[3],
         a[4] ^ b[4], a[5] ^ b[5], a[6] ^ b[6], a[7] ^ b[7],
         a[8] ^ b[8], a[9] ^ b[9], a[10] ^ b[10], a[11] ^ b[11],
         a[12] ^ b[12], a[13] ^ b[13], a[14] ^ b[14], a[15] ^ b[15],
+        a[16] ^ b[16], a[17] ^ b[17], a[18] ^ b[18], a[19] ^ b[19],
+        a[20] ^ b[20], a[21] ^ b[21], a[22] ^ b[22], a[23] ^ b[23],
+        a[24] ^ b[24], a[25] ^ b[25], a[26] ^ b[26], a[27] ^ b[27],
+        a[28] ^ b[28], a[29] ^ b[29], a[30] ^ b[30], a[31] ^ b[31],
     ]
 }
 
-fn bitwise_and(a: &[u8; 16], b: &[u8; 16]) -> [u8; 16] {
+fn bitwise_and(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
     [
         a[0] & b[0], a[1] & b[1], a[2] & b[2], a[3] & b[3],
         a[4] & b[4], a[5] & b[5], a[6] & b[6], a[7] & b[7],
         a[8] & b[8], a[9] & b[9], a[10] & b[10], a[11] & b[11],
         a[12] & b[12], a[13] & b[13], a[14] & b[14], a[15] & b[15],
+        a[16] & b[16], a[17] & b[17], a[18] & b[18], a[19] & b[19],
+        a[20] & b[20], a[21] & b[21], a[22] & b[22], a[23] & b[23],
+        a[24] & b[24], a[25] & b[25], a[26] & b[26], a[27] & b[27],
+        a[28] & b[28], a[29] & b[29], a[30] & b[30], a[31] & b[31],
     ]
 }

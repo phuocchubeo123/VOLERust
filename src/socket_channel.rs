@@ -203,6 +203,44 @@ impl CommunicationChannel for TcpChannel {
         data
     }
 
+    fn send_32byte_block(&mut self, data: &[[u8; 32]]) {
+        let size = data.len() as u64;
+
+        // Send the size of the data array
+        self.stream
+            .write_all(&size.to_le_bytes())
+            .expect("Failed to send data size");
+
+        // Send the 256-bit (32-byte) blocks
+        for block in data {
+            self.stream
+                .write_all(block)
+                .expect("Failed to send data block");
+        }
+    }
+
+    fn receive_32byte_block(&mut self) -> Vec<[u8; 32]> {
+        // Receive the size of the data array
+        let mut size_buf = [0u8; 8];
+        self.stream
+            .read_exact(&mut size_buf)
+            .expect("Failed to receive data size");
+        let size = u64::from_le_bytes(size_buf) as usize;
+
+        // Receive the 256-bit (32-byte) blocks
+        let mut data = Vec::with_capacity(size);
+        for _ in 0..size {
+            let mut block = [0u8; 32];
+            self.stream
+                .read_exact(&mut block)
+                .expect("Failed to receive data block");
+            data.push(block);
+        }
+        data
+    }
+
+
+
     fn flush(&mut self) {
         self.stream.flush().expect("Failed to flush stream");
     }

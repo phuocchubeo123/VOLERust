@@ -2,13 +2,12 @@ use crate::hash::CCRH;
 use crate::comm_channel::CommunicationChannel;
 
 pub struct OTPre {
-    pre_data: Vec<[u8; 16]>,
+    pre_data: Vec<[u8; 32]>,
     bits: Vec<bool>,
     n: usize,
     count: usize,
     length: usize,
-    ccrh: CCRH,
-    delta: Option<[u8; 16]>,
+    delta: Option<[u8; 32]>,
 }
 
 impl OTPre {
@@ -16,12 +15,11 @@ impl OTPre {
     pub fn new(length: usize, times: usize) -> Self {
         let n = length * times;
         Self {
-            pre_data: vec![[0u8; 16]; 2 * n],
+            pre_data: vec![[0u8; 32]; 2 * n],
             bits: vec![false; n],
             n,
             count: 0,
             length,
-            ccrh: CCRH::new(&[0u8; 32]),
             delta: None,
         }
     }
@@ -46,22 +44,24 @@ impl OTPre {
     }
 
     /// Precompute data for the sender
-    pub fn send_pre(&mut self, data: &[[u8; 16]], delta: [u8; 16]) {
+    pub fn send_pre(&mut self, data: &[[u8; 32]], delta: [u8; 32]) {
+        let ccrh = CCRH::new();
         self.delta = Some(delta);
 
         let n = self.n;
-        self.ccrh.hn(&mut self.pre_data[..n], data);
+        ccrh.hn(&mut self.pre_data[..n], data);
 
         for i in 0..n {
-            self.pre_data[n + i] = CCRH::xor_block(&data[i], &delta);
+            self.pre_data[n + i] = xor_block(&data[i], &delta);
         }
 
         let temp = self.pre_data[n..2 * n].to_vec(); // Copy to avoid overlapping borrows
-        self.ccrh.hn(&mut self.pre_data[n..2 * n], &temp);
+        ccrh.hn(&mut self.pre_data[n..2 * n], &temp);
     }
 
     /// Precompute data for the receiver
-    pub fn recv_pre(&mut self, data: &[[u8; 16]], bits: Option<&[bool]>) {
+    pub fn recv_pre(&mut self, data: &[[u8; 32]], bits: Option<&[bool]>) {
+        let ccrh = CCRH::new();
         if let Some(b) = bits {
             self.bits[..self.n].copy_from_slice(b);
         } else {
@@ -69,31 +69,31 @@ impl OTPre {
                 self.bits[i] = data[i][0] & 1 != 0; // Extract LSB
             }
         }
-        self.ccrh.hn(&mut self.pre_data[..self.n], data);
+        ccrh.hn(&mut self.pre_data[..self.n], data);
     }
 
     /// Send data based on precomputed values
     pub fn send<IO: CommunicationChannel>(
         &mut self,
         io: &mut IO,
-        m0: &[[u8; 16]],
-        m1: &[[u8; 16]],
+        m0: &[[u8; 32]],
+        m1: &[[u8; 32]],
         length: usize,
         s: usize,
     ) {
-        let mut pad = [[0u8; 16]; 2];
+        let mut pad = [[0u8; 32]; 2];
         let k = s * length;
 
         for i in 0..length {
             let idx = k + i;
             if !self.bits[idx] {
-                pad[0] = CCRH::xor_block(&m0[i], &self.pre_data[idx]);
-                pad[1] = CCRH::xor_block(&m1[i], &self.pre_data[idx + self.n]);
+                pad[0] = xor_block(&m0[i], &self.pre_data[idx]);
+                pad[1] = xor_block(&m1[i], &self.pre_data[idx + self.n]);
             } else {
-                pad[0] = CCRH::xor_block(&m0[i], &self.pre_data[idx + self.n]);
-                pad[1] = CCRH::xor_block(&m1[i], &self.pre_data[idx]);
+                pad[0] = xor_block(&m0[i], &self.pre_data[idx + self.n]);
+                pad[1] = xor_block(&m1[i], &self.pre_data[idx]);
             }
-            io.send_data(&pad);
+            io.send_32byte_block(&pad);
         }
     }
 
@@ -101,20 +101,20 @@ impl OTPre {
     pub fn recv<IO: CommunicationChannel>(
         &mut self,
         io: &mut IO,
-        data: &mut [[u8; 16]],
+        data: &mut [[u8; 32]],
         b: &[bool],
         length: usize,
         s: usize,
     ) {
-        let mut pad = [[0u8; 16]; 2];
+        let mut pad = [[0u8; 32]; 2];
         let k = s * length;
 
         for i in 0..length {
-            let received = io.receive_data();
+            let received = io.receive_32byte_block();
             pad.copy_from_slice(&received);
 
             let idx = if b[i] { 1 } else { 0 };
-            data[i] = CCRH::xor_block(&self.pre_data[k + i], &pad[idx]);
+            data[i] = xor_block(&self.pre_data[k + i], &pad[idx]);
         }
     }
 
@@ -122,4 +122,17 @@ impl OTPre {
     pub fn reset(&mut self) {
         self.count = 0;
     }
+}
+
+fn xor_block(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
+    [
+        a[0] ^ b[0], a[1] ^ b[1], a[2] ^ b[2], a[3] ^ b[3],
+        a[4] ^ b[4], a[5] ^ b[5], a[6] ^ b[6], a[7] ^ b[7],
+        a[8] ^ b[8], a[9] ^ b[9], a[10] ^ b[10], a[11] ^ b[11],
+        a[12] ^ b[12], a[13] ^ b[13], a[14] ^ b[14], a[15] ^ b[15],
+        a[16] ^ b[16], a[17] ^ b[17], a[18] ^ b[18], a[19] ^ b[19],
+        a[20] ^ b[20], a[21] ^ b[21], a[22] ^ b[22], a[23] ^ b[23],
+        a[24] ^ b[24], a[25] ^ b[25], a[26] ^ b[26], a[27] ^ b[27],
+        a[28] ^ b[28], a[29] ^ b[29], a[30] ^ b[30], a[31] ^ b[31],
+    ]
 }

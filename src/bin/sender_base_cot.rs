@@ -18,8 +18,8 @@ fn main() {
     sender_cot.cot_gen_pre(None);
 
     // Original COT generation
-    let size = 128; // Number of COTs
-    let mut original_ot_data = vec![[0u8; 16]; size];
+    let size = 256; // Number of COTs
+    let mut original_ot_data = vec![[0u8; 32]; size];
     sender_cot.cot_gen(&mut original_ot_data, size, None);
 
     // Print the original COT data
@@ -32,26 +32,26 @@ fn main() {
     let is_original_valid = sender_cot.check_cot(&original_ot_data, size);
     println!("Original COT validation result: {}", is_original_valid);
 
-        // New COT generation using OTPre
-    let mut sender_pre_ot = OTPre::new(size, 1);
-    sender_cot.cot_gen_preot(&mut sender_pre_ot, size, None);
+    //     // New COT generation using OTPre
+    // let mut sender_pre_ot = OTPre::new(size, 1);
+    // sender_cot.cot_gen_preot(&mut sender_pre_ot, size, None);
 
-    // Send data using OTPre
-    let mut m0 = vec![[0u8; 16]; size];
-    let mut m1 = vec![[0u8; 16]; size];
-    for i in 0..size {
-        m0[i] = [i as u8; 16];
-        m1[i] = [(i + 1) as u8; 16];
-    }
+    // // Send data using OTPre
+    // let mut m0 = vec![[0u8; 32]; size];
+    // let mut m1 = vec![[0u8; 32]; size];
+    // for i in 0..size {
+    //     m0[i] = [i as u8; 16];
+    //     m1[i] = [(i + 1) as u8; 16];
+    // }
 
-    for (i, block) in m0.iter().enumerate().take(5) {
-        println!("Block {} of m0: {:?}", i, block);
-    }
+    // for (i, block) in m0.iter().enumerate().take(5) {
+    //     println!("Block {} of m0: {:?}", i, block);
+    // }
 
-    for (i, block) in m1.iter().enumerate().take(5) {
-        println!("Block {} of m1: {:?}", i, block);
-    }
+    // for (i, block) in m1.iter().enumerate().take(5) {
+    //     println!("Block {} of m1: {:?}", i, block);
+    // }
 
-    sender_pre_ot.send(&mut channel, &m0, &m1, size, 0);
-    println!("Sender sent data using OTPre::send()");
+    // sender_pre_ot.send(&mut channel, &m0, &m1, size, 0);
+    // println!("Sender sent data using OTPre::send()");
 }

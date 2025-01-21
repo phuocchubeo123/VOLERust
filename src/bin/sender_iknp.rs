@@ -14,7 +14,7 @@ fn main() {
     sender_iknp.setup_send(None, None);
 
     let length = 2048;
-    let mut data = vec![[0u8; 16]; length];
+    let mut data = vec![[0u8; 32]; length];
     sender_iknp.send_cot(&mut data, length);
 
     println!("Sender COT data: {:?}", &data[..5]);

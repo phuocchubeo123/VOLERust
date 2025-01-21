@@ -20,8 +20,8 @@ fn main() {
     receiver_cot.cot_gen_pre(None);
 
     // Original COT generation
-    let size = 128; // Number of COTs
-    let mut original_ot_data = vec![[0u8; 16]; size];
+    let size = 256; // Number of COTs
+    let mut original_ot_data = vec![[0u8; 32]; size];
     let mut choice_bits = vec![false; size];
 
     // Populate random choice bits
@@ -31,30 +31,30 @@ fn main() {
 
     receiver_cot.cot_gen(&mut original_ot_data, size, Some(&choice_bits));
 
-    // Print the original COT data
-    println!("Receiver Original COT data:");
-    for (i, block) in original_ot_data.iter().enumerate().take(5) {
-        println!("Block {}: {:?}", i, block);
-    }
+    // // Print the original COT data
+    // println!("Receiver Original COT data:");
+    // for (i, block) in original_ot_data.iter().enumerate().take(5) {
+    //     println!("Block {}: {:?}", i, block);
+    // }
 
-    println!("Choice bits: {:?}", &choice_bits[..5]);
+    // println!("Choice bits: {:?}", &choice_bits[..5]);
 
-    // Check correctness of the original COT data
-    let is_original_valid = receiver_cot.check_cot(&original_ot_data, size);
-    println!("Original COT validation result: {}", is_original_valid);
+    // // Check correctness of the original COT data
+    // let is_original_valid = receiver_cot.check_cot(&original_ot_data, size);
+    // println!("Original COT validation result: {}", is_original_valid);
 
-        // New COT generation using OTPre
-    let mut receiver_pre_ot = OTPre::new(size, 1);
-    receiver_cot.cot_gen_preot(&mut receiver_pre_ot, size, Some(&choice_bits));
+    //     // New COT generation using OTPre
+    // let mut receiver_pre_ot = OTPre::new(size, 1);
+    // receiver_cot.cot_gen_preot(&mut receiver_pre_ot, size, Some(&choice_bits));
 
-    // Receive data using OTPre
-    let mut received_data = vec![[0u8; 16]; size];
-    receiver_pre_ot.recv(&mut channel, &mut received_data, &choice_bits, size, 0);
+    // // Receive data using OTPre
+    // let mut received_data = vec![[0u8; 16]; size];
+    // receiver_pre_ot.recv(&mut channel, &mut received_data, &choice_bits, size, 0);
 
-    println!("Choice bits: {:?}", &choice_bits[..5]);
+    // println!("Choice bits: {:?}", &choice_bits[..5]);
 
-    println!("Receiver received data using OTPre::recv:");
-    for (i, block) in received_data.iter().enumerate().take(5) {
-        println!("Received Block {}: {:?}", i, block);
-    }
+    // println!("Receiver received data using OTPre::recv:");
+    // for (i, block) in received_data.iter().enumerate().take(5) {
+    //     println!("Received Block {}: {:?}", i, block);
+    // }
 }

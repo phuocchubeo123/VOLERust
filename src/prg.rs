@@ -58,14 +58,51 @@ impl PRG {
         self.counter = 0;
     }
 
-    /// Generate `blocks.len()` random 16-byte blocks in-place.
     pub fn random_block(&mut self, blocks: &mut [[u8; 16]]) {
-        for block in blocks.iter_mut() {
-            block[8..].copy_from_slice(&self.counter.to_le_bytes());
-            let mut aes_block = GenericArray::clone_from_slice(block);
-            self.aes.encrypt_block(&mut aes_block);
-            *block = aes_block.into();
+        // Create an array of AES blocks for encryption
+        let mut aes_blocks: Vec<_> = (0..blocks.len())
+                .map(|_| {
+                let mut block = [0u8; 16];
+                block[8..].copy_from_slice(&self.counter.to_le_bytes());
+                self.counter += 1; // Increment counter for each block
+                GenericArray::clone_from_slice(&block)
+            })
+            .collect();
+
+        // Encrypt all blocks in one call
+        self.aes.encrypt_blocks(&mut aes_blocks);
+
+        // Copy the encrypted blocks back into the original `blocks` array
+        for (i, encrypted) in aes_blocks.iter().enumerate() {
+            blocks[i].copy_from_slice(encrypted);
+        }
+    }
+
+    pub fn random_32byte_block(&mut self, blocks: &mut [[u8; 32]]) {
+        // Preallocate space for AES blocks (2 AES blocks per 32-byte block)
+        let mut aes_blocks: Vec<_> =
+            vec![GenericArray::default(); blocks.len() * 2];
+
+        for (i, block) in blocks.iter_mut().enumerate() {
+            // Embed the counter in the last 8 bytes of the 32-byte block
+            block[8..16].copy_from_slice(&self.counter.to_le_bytes());
             self.counter += 1;
+            block[24..32].copy_from_slice(&self.counter.to_le_bytes());
+            self.counter += 1;
+
+            // Write the two halves of the 32-byte block into the AES blocks vector
+            aes_blocks[i * 2].copy_from_slice(&block[0..16]);
+            aes_blocks[i * 2 + 1].copy_from_slice(&block[16..32]);
+
+        }
+
+        // Encrypt all blocks in one batch
+        self.aes.encrypt_blocks(&mut aes_blocks);
+
+        // Copy the encrypted halves back into their respective 32-byte blocks
+        for (i, block) in blocks.iter_mut().enumerate() {
+            block[0..16].copy_from_slice(&aes_blocks[i * 2]);
+            block[16..32].copy_from_slice(&aes_blocks[i * 2 + 1]);
         }
     }
 
