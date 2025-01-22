@@ -64,6 +64,10 @@ impl Hash {
         self.size = 0;
     }
 
+    pub fn hash_32byte_block(&self, data: &[u8; 32]) -> [u8; DIGEST_SIZE] {
+        Self::hash_once(data)
+    }
+
     /// Computes a SHA-256 hash in one step
     pub fn hash_once(data: &[u8]) -> [u8; DIGEST_SIZE] {
         let mut hash = Self::new();

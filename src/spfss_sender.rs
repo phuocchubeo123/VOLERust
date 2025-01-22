@@ -1,17 +1,19 @@
 use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
-use crate::pre_ot::OTPre;
+use crate::preot::OTPre;
+use crate::hash::Hash;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
+use std::convert::TryInto;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
 pub struct SpfssSenderFp<'a, IO> {
     io: &'a mut IO,
-    seed: [u8; 16],
+    seed: FE,
     delta: FE,
     secret_sum: FE,
     ggm_tree: Vec<FE>,
@@ -27,11 +29,11 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
     pub fn new(io: &'a mut IO, depth: usize) -> Self {
         let leave_n = 1 << (depth - 1);
         let mut prg = PRG::new(None, 0);
-        let mut seed = [0u8; 16];
-        prg.random_block(&mut [seed]);
+        let mut seed = [FE::zero(); 1];
+        prg.random_stark252_elements(&mut seed);
         Self {
             io,
-            seed,
+            seed: seed[0],
             delta: FE::zero(),
             secret_sum: FE::zero(),
             ggm_tree: vec![FE::zero(); leave_n],
@@ -54,35 +56,40 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
         let ot_msg_0 = self.m0
             .iter()
             .map(|x| x.to_bytes_le())
-            .collect();
+            .collect::<Vec<[u8; 32]>>();
         let ot_msg_1 = self.m1
             .iter()
             .map(|x| x.to_bytes_le())
-            .collect();
-        ot.send(&mut self.io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
+            .collect::<Vec<[u8; 32]>>();
+        ot.send(self.io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
         self.io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }
 
     /// Generate the GGM tree from the top.
+    // Generate the GGM tree to ggm_tree_mem first, then copy it into self.ggm_tree for later check
     fn ggm_tree_gen(&mut self, ggm_tree_mem: &mut [FE], secret: FE, gamma: FE) {
         let mut prp = TwoKeyPRP::new();
-        self.ggm_tree = vec![FE::zero(); self.leave_n];
-
         // Generate the first layer of the GGM tree
-        prp.node_expand_1to2(&mut ggm_tree_mem[..2], &secret);
+        prp.node_expand_1to2(&mut ggm_tree_mem[0..2], &self.seed);
+        self.m0[0] = ggm_tree_mem[0];
+        self.m1[0] = ggm_tree_mem[1];
+
+        println!("ggm ggm: {:?}", &ggm_tree_mem[0..2]);
 
         // Process all layers
         for h in 1..self.depth - 1 {
-            let mut ot_msg_0 = FE::zero();
-            let mut ot_msg_1 = FE::zero();
+            self.m0[h] = FE::zero();
+            self.m1[h] = FE::zero();
             let sz = 1 << h;
             for i in (0..sz).step_by(2) {
-                prp.node_expand_2to4(&mut ggm_tree_mem[i * 2..(i * 2 + 4)], &ggm_tree_mem[i..(i + 2)]);
-                ot_msg_0 += ggm_tree_mem[i * 2] + ggm_tree_mem[i * 2 + 2];
-                ot_msg_1 += ggm_tree_mem[i * 2 + 1] + ggm_tree_mem[i * 2 + 3];
+                prp.node_expand_2to4(
+                    &mut self.ggm_tree[2*i..2*i+4], 
+                    &ggm_tree_mem[i..i+2]
+                );
+                self.m0[h] += ggm_tree_mem[i * 2] + ggm_tree_mem[i * 2 + 2];
+                self.m1[h] += ggm_tree_mem[i * 2 + 1] + ggm_tree_mem[i * 2 + 3];
             }
-            self.m0[h - 1] = ot_msg_0.to_bytes_le();
-            self.m1[h - 1] = ot_msg_1.to_bytes_le();
+            ggm_tree_mem[..2*sz].copy_from_slice(&self.ggm_tree[..2*sz]);
         }
 
         // Compute the secret sum
@@ -90,48 +97,80 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
         for node in ggm_tree_mem.iter().take(self.leave_n) {
             self.secret_sum += *node;
         }
-        self.secret_sum = FE::from(0u64) - self.secret_sum + gamma;
+        self.secret_sum += gamma;
     }
 
     /// Consistency check: Protocol PI_spsVOLE
-    pub fn consistency_check(&mut self, io2: &mut IO, y: FE) {
-        let digest = self.generate_digest();
-        let chi = self.generate_hash_coeff(digest, self.leave_n);
+    pub fn consistency_check(&mut self, y: FE) {
+        let hash = Hash::new();
+        let digest = hash.hash_32byte_block(&self.secret_sum.to_bytes_le());
+        let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
+        let mut chi = vec![FE::zero(); self.leave_n];
+        uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
 
         // Receive x_star
-        let x_star_bytes = io2.receive_data(32).expect("Failed to receive x_star");
-        let x_star = FE::from_bytes_le(&x_star_bytes).unwrap();
-
+        let x_star = self.io.receive_stark252(1).expect("Failed to receive x_star")[0];
         // Compute y_star
-        let tmp = x_star * self.delta;
-        let y_star = y + (FE::from(0u64) - tmp);
+        let y_star = y + x_star * self.delta;
 
         // Compute V
-        let v = self.vector_inner_product_mod(&chi, &self.ggm_tree) - y_star;
+        let v = self.vector_inner_product(&chi, &self.ggm_tree) - y_star;
 
         // Send V
-        io2.send_data(&v.to_bytes_le()).expect("Failed to send V");
-    }
-
-    /// Generate hash coefficients based on a seed.
-    fn generate_hash_coeff(&self, seed: [u8; 16], size: usize) -> Vec<FE> {
-        let mut coeffs = vec![FE::zero(); size];
-        let mut prg = PRG::new(Some(&seed), 0);
-        prg.random_stark252_elements(&mut coeffs);
-        coeffs
+        self.io.send_stark252(&[v]).expect("Failed to send V");
     }
 
     /// Compute modular inner product.
-    fn vector_inner_product_mod(&self, vec1: &[FE], vec2: &[FE]) -> FE {
+    fn vector_inner_product(&self, vec1: &[FE], vec2: &[FE]) -> FE {
         vec1.iter()
             .zip(vec2)
             .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
     }
+}
 
-    /// Generate digest for hash coefficients.
-    fn generate_digest(&self) -> [u8; 16] {
-        let mut digest = [0u8; 16];
-        digest[..8].copy_from_slice(&self.secret_sum.to_bytes_le()[..8]);
-        digest
+pub fn uni_hash_coeff_gen(coeff: &mut [FE], seed: FE, sz: usize) {
+    if sz == 0 {
+        return;
+    }
+
+    // Handle small `sz`
+    coeff[0] = seed.clone();
+    if sz == 1 {
+        return;
+    }
+
+    coeff[1] = &coeff[0] * &seed;
+    if sz == 2 {
+        return;
+    }
+
+    coeff[2] = &coeff[1] * &seed;
+    if sz == 3 {
+        return;
+    }
+
+    let multiplier = &coeff[2] * &seed;
+    coeff[3] = multiplier.clone();
+    if sz == 4 {
+        return;
+    }
+
+    // Compute the rest in batches of 4
+    let mut i = 4;
+    while i + 3 < sz {
+        coeff[i] = &coeff[i - 4] * &multiplier;
+        coeff[i + 1] = &coeff[i - 3] * &multiplier;
+        coeff[i + 2] = &coeff[i - 2] * &multiplier;
+        coeff[i + 3] = &coeff[i - 1] * &multiplier;
+        i += 4;
+    }
+
+    // Handle remaining elements
+    let remainder = sz % 4;
+    if remainder != 0 {
+        let start = sz - remainder;
+        for j in 0..remainder {
+            coeff[start + j] = &coeff[start + j - 1] * &seed;
+        }
     }
 }

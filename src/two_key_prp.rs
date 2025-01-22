@@ -11,8 +11,14 @@ pub struct TwoKeyPRP {
 }
 
 impl TwoKeyPRP {
+    pub fn new() -> Self {
+        TwoKeyPRP {}
+    }
+
     /// Expand a single parent field element into two child field elements.
-    pub fn node_expand_1to2(&self, children: &mut [FE; 2], parent: &FE) {
+    pub fn node_expand_1to2(&self, children: &mut [FE], parent: &FE) {
+        assert_eq!(children.len(), 2, "Node expand from 1 to 2 expects children to be an array of size 2.");
+
         let parent_bytes = parent.to_bytes_le();
         let aes_key = Aes256::new(GenericArray::from_slice(&parent_bytes));
 
@@ -34,7 +40,7 @@ impl TwoKeyPRP {
     }
 
     /// Unrolled version: Expand two parent field elements into four child field elements.
-    pub fn node_expand_2to4(&self, children: &mut [FE; 4], parents: &[FE; 2]) {
+    pub fn node_expand_2to4(&self, children: &mut [FE], parents: &[FE]) {
         let mut temp_children = [FE::zero(); 2];
 
         // Expand first parent into the first two children

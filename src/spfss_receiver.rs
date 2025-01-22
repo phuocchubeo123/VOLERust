@@ -1,10 +1,12 @@
 use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
-use crate::pre_ot::OTPre;
+use crate::preot::OTPre;
+use crate::hash::Hash;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
+use std::convert::TryInto;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -39,12 +41,12 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
     /// Receive the message and reconstruct the tree.
     pub fn recv(&mut self, ot: &mut OTPre, s: usize) {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
-        ot.recv(&mut receive_data, &mut self.b, s);
+        ot.recv(self.io, &mut receive_data, &mut self.b, self.depth - 1, s);
         self.m = receive_data
             .iter()
-            .map(|x| FE::from_bytes_le(x))
-            .collect();
-        self.io.receive_stark252(&mut self.share).expect("Failed to receive share");
+            .map(|x| FE::from_bytes_le(x).unwrap())
+            .collect::<Vec<FE>>();
+        self.share = self.io.receive_stark252(1).expect("Failed to receive share")[0];
     }
 
     /// Compute the GGM tree and reconstruct the nodes.
@@ -56,7 +58,7 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
     /// Reconstruct the GGM tree.
     fn reconstruct_tree(&mut self) {
         let mut to_fill_idx = 0;
-        let mut prp = TwoKeyPRP::new([&[0u8; 16], &[0u8; 16], &[0u8; 16], &[0u8; 16]]);
+        let mut prp = TwoKeyPRP::new();
 
         for i in 1..self.depth {
             to_fill_idx *= 2;
@@ -90,75 +92,113 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
         depth: usize,
         lr: usize,
         to_fill_idx: usize,
-        sum: [u8; 16],
+        sum: FE,
         prp: &mut TwoKeyPRP,
     ) {
         let item_n = 1 << depth;
         let mut nodes_sum = FE::zero();
+        let mut lr_start = 0;
+        if lr != 0 {
+            lr_start = 1;
+        }
 
-        for i in (lr..item_n).step_by(2) {
+        for i in (lr_start..item_n).step_by(2) {
             nodes_sum += self.ggm_tree[i];
         }
 
-        self.ggm_tree[to_fill_idx] = nodes_sum + FE::from_bytes_le(&sum).unwrap();
+        self.ggm_tree[to_fill_idx] = sum - nodes_sum;
 
         if depth == self.depth - 1 {
             return;
         }
 
-        for i in (0..item_n).rev().step_by(2) {
+        let tmp = self.ggm_tree.clone();
+
+        for i in (0..item_n).step_by(2).rev() {
             prp.node_expand_2to4(
                 &mut self.ggm_tree[i * 2..i * 2 + 4],
-                &self.ggm_tree[i..i + 2],
+                &tmp[i..i + 2],
             );
         }
     }
 
     /// Consistency check for the protocol.
     pub fn consistency_check(&mut self, io2: &mut IO, z: FE, beta: FE) {
-        let digest = self.generate_digest();
-        let chi = self.generate_hash_coeff(digest, self.leave_n);
+        let hash = Hash::new();
+        let digest = hash.hash_32byte_block(&self.share.to_bytes_le());
+        let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
+        let mut chi = vec![FE::zero(); self.leave_n];
+        uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
 
         // Compute x_star
-        let tmp = chi[self.choice_pos] * beta;
-        let x_star = FE::from(0u64) - (z + tmp);
-
+        let x_star = chi[self.choice_pos] * beta - z;
         // Send x_star
-        io2.send_data(&x_star.to_bytes_le())
-            .expect("Failed to send x_star");
+        self.io.send_stark252(&[x_star]);
 
         // Compute W
-        let w = self.vector_inner_product_mod(&chi, &self.ggm_tree) - z;
+        let w = self.vector_inner_product(&chi, &self.ggm_tree) - z;
 
         // Receive V and verify
-        let mut v_bytes = [0u8; 32];
-        io2.receive_data(&mut v_bytes).expect("Failed to receive V");
-        let v = FE::from_bytes_le(&v_bytes).unwrap();
+        let v = self.io.receive_stark252(1).expect("Failed to receive V")[0];
 
         if w != v {
             panic!("SPFSS consistency check failed!");
+        } else {
+            println!("SPFSS successful!");
         }
     }
 
-    /// Generate hash coefficients based on a seed.
-    fn generate_hash_coeff(&self, seed: [u8; 16], size: usize) -> Vec<FE> {
-        let mut coeffs = vec![FE::zero(); size];
-        let mut prg = PRG::new(Some(&seed), 0);
-        prg.random_stark252_elements(&mut coeffs);
-        coeffs
-    }
-
     /// Compute modular inner product.
-    fn vector_inner_product_mod(&self, vec1: &[FE], vec2: &[FE]) -> FE {
+    fn vector_inner_product(&self, vec1: &[FE], vec2: &[FE]) -> FE {
         vec1.iter()
             .zip(vec2)
             .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
     }
+}
 
-    /// Generate digest for hash coefficients.
-    fn generate_digest(&self) -> [u8; 16] {
-        let mut digest = [0u8; 16];
-        digest[..8].copy_from_slice(&self.share.to_bytes_le()[..8]);
-        digest
+pub fn uni_hash_coeff_gen(coeff: &mut [FE], seed: FE, sz: usize) {
+    if sz == 0 {
+        return;
+    }
+
+    // Handle small `sz`
+    coeff[0] = seed.clone();
+    if sz == 1 {
+        return;
+    }
+
+    coeff[1] = &coeff[0] * &seed;
+    if sz == 2 {
+        return;
+    }
+
+    coeff[2] = &coeff[1] * &seed;
+    if sz == 3 {
+        return;
+    }
+
+    let multiplier = &coeff[2] * &seed;
+    coeff[3] = multiplier.clone();
+    if sz == 4 {
+        return;
+    }
+
+    // Compute the rest in batches of 4
+    let mut i = 4;
+    while i + 3 < sz {
+        coeff[i] = &coeff[i - 4] * &multiplier;
+        coeff[i + 1] = &coeff[i - 3] * &multiplier;
+        coeff[i + 2] = &coeff[i - 2] * &multiplier;
+        coeff[i + 3] = &coeff[i - 1] * &multiplier;
+        i += 4;
+    }
+
+    // Handle remaining elements
+    let remainder = sz % 4;
+    if remainder != 0 {
+        let start = sz - remainder;
+        for j in 0..remainder {
+            coeff[start + j] = &coeff[start + j - 1] * &seed;
+        }
     }
 }
