@@ -17,5 +17,5 @@ pub mod two_key_prp;
 pub mod preot;
 pub mod iknp;
 pub mod base_cot;
-// pub mod spfss_sender;
-// pub mod spfss_receiver;
+pub mod spfss_sender;
+pub mod spfss_receiver;

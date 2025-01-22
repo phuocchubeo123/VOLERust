@@ -73,3 +73,9 @@ name = "sender_base_cot"
 
 [[bin]]
 name = "receiver_base_cot"
+
+[[bin]]
+name = "sender_spfss"
+
+[[bin]]
+name = "receiver_spfss"

@@ -361,13 +361,15 @@ impl<'a, IO: CommunicationChannel> IKNP<'a, IO> {
         chi_prg.random_32byte_block(&mut chi);
         vector_inn_prdt_sum_no_red(&mut tmp, &chi, &self.local_out);
         xor_blocks(&mut t, &tmp);
+        // println!("chi: {:?}", &chi[..5]);
+        // println!("out: {:?}", &out[..5]);
 
         println!("current tmp: {:?}", tmp);
         println!("current t: {:?}", t);
         // println!("chi: {:?}, local_out: {:?}", chi, self.local_out);
         // println!("local r: {:?}", self.local_r);
 
-        for j in 0..256 {
+        for j in 0..(NUM_BITS * 2) {
             for byt in 0..32 {
                 x[byt] = x[byt] ^ (chi[j][byt] & select[self.local_r[j] as usize][byt]);
             }
@@ -419,6 +421,10 @@ fn mul256(a: &[u8; 32], b: &[u8; 32], res: &mut [[u8; 32]; 2]) {
     r2[8..16].copy_from_slice(&((z04 >> 64 ^ (z05 & mask)) as u64).to_le_bytes());
     r2[16..24].copy_from_slice(&((z05 >> 64 ^ (z06 & mask)) as u64).to_le_bytes());
     r2[24..32].copy_from_slice(&((z06 >> 64) as u64).to_le_bytes());
+
+    // println!("last 8 bits: {:?}, {:?}, {:?}", &a[24..32], &b[24..32], &r2[24..32]);
+    // println!("a: {:?}", a);
+    // println!("b: {:?}", b);
 
     res[0] = r1;
     res[1] = r2;
@@ -588,9 +594,9 @@ fn transpose(out: &mut [[u8; 32]], t: &[[u8; 32]], num_bits: usize, block_size: 
     for row in 0..num_bits {
         for col in 0..block_size {
             let idx = row * block_size + col;
-            let bit = (t[idx / num_bits][(idx / 8) % 16] >> (idx % 8)) & 1;
+            let bit = (t[idx / num_bits][(idx / 8) % 32] >> (idx % 8)) & 1;
             let new_idx = col * num_bits + row;
-            out[new_idx / num_bits][(new_idx / 8) % 16] |= bit << (new_idx % 8);
+            out[new_idx / num_bits][(new_idx / 8) % 32] |= bit << (new_idx % 8);
         }
     }
 }

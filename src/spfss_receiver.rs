@@ -1,6 +1,7 @@
 use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
+use crate::pre_ot::OTPre;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
@@ -11,7 +12,7 @@ pub type FE = FieldElement<F>;
 pub struct SpfssRecverFp<'a, IO> {
     io: &'a mut IO,
     ggm_tree: Vec<FE>,
-    m: Vec<[u8; 16]>,
+    m: Vec<FE>,
     b: Vec<bool>,
     choice_pos: usize,
     depth: usize,
@@ -26,7 +27,7 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
         Self {
             io,
             ggm_tree: vec![FE::zero(); leave_n],
-            m: vec![[0u8; 16]; depth - 1],
+            m: vec![FE::zero(); depth - 1],
             b: vec![false; depth - 1],
             choice_pos: 0,
             depth,
@@ -36,13 +37,14 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
     }
 
     /// Receive the message and reconstruct the tree.
-    pub fn recv(&mut self, ot: &mut impl FnMut(&mut [[u8; 16]], &mut [bool], usize), s: usize) {
-        ot(&mut self.m, &mut self.b, s);
-        let mut share_bytes = [0u8; 32];
-        self.io
-            .receive_data(&mut share_bytes)
-            .expect("Failed to receive share");
-        self.share = FE::from_bytes_le(&share_bytes).unwrap();
+    pub fn recv(&mut self, ot: &mut OTPre, s: usize) {
+        let mut receive_data = vec![[0u8; 32]; self.depth - 1];
+        ot.recv(&mut receive_data, &mut self.b, s);
+        self.m = receive_data
+            .iter()
+            .map(|x| FE::from_bytes_le(x))
+            .collect();
+        self.io.receive_stark252(&mut self.share).expect("Failed to receive share");
     }
 
     /// Compute the GGM tree and reconstruct the nodes.

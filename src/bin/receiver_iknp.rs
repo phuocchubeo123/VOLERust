@@ -23,5 +23,6 @@ fn main() {
 
     receiver_iknp.recv_cot(&mut data, &r, length);
 
+    println!("Choice bits: {:?}", &r[..5]);
     println!("Receiver COT data: {:?}", &data[..5]);
 }

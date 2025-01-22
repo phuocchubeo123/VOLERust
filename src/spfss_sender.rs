@@ -1,6 +1,7 @@
 use crate::two_key_prp::TwoKeyPRP;
 use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
+use crate::pre_ot::OTPre;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
@@ -14,7 +15,8 @@ pub struct SpfssSenderFp<'a, IO> {
     delta: FE,
     secret_sum: FE,
     ggm_tree: Vec<FE>,
-    m: Vec<[u8; 16]>,
+    m0: Vec<FE>,
+    m1: Vec<FE>,
     depth: usize,
     leave_n: usize,
     prg: PRG,
@@ -33,7 +35,8 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
             delta: FE::zero(),
             secret_sum: FE::zero(),
             ggm_tree: vec![FE::zero(); leave_n],
-            m: vec![[0u8; 16]; depth - 1],
+            m0: vec![FE::zero(); depth - 1],
+            m1: vec![FE::zero(); depth - 1],
             depth,
             leave_n,
             prg,
@@ -47,17 +50,22 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
     }
 
     /// Send OT messages and secret sum.
-    pub fn send(&mut self, ot: &mut impl FnMut(&[[u8; 16]], &[[u8; 16]], usize), s: usize) {
-        let (ot_msg_0, ot_msg_1) = self.m.split_at(self.depth - 1);
-        ot(ot_msg_0, ot_msg_1, s);
-        self.io
-            .send_data(&self.secret_sum.to_bytes_le())
-            .expect("Failed to send secret_sum");
+    pub fn send(&mut self, ot: &mut OTPre, s: usize) {
+        let ot_msg_0 = self.m0
+            .iter()
+            .map(|x| x.to_bytes_le())
+            .collect();
+        let ot_msg_1 = self.m1
+            .iter()
+            .map(|x| x.to_bytes_le())
+            .collect();
+        ot.send(&mut self.io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
+        self.io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }
 
     /// Generate the GGM tree from the top.
     fn ggm_tree_gen(&mut self, ggm_tree_mem: &mut [FE], secret: FE, gamma: FE) {
-        let mut prp = TwoKeyPRP::new([&self.seed, &[0u8; 16], &[0u8; 16], &[0u8; 16]]);
+        let mut prp = TwoKeyPRP::new();
         self.ggm_tree = vec![FE::zero(); self.leave_n];
 
         // Generate the first layer of the GGM tree
@@ -73,8 +81,8 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
                 ot_msg_0 += ggm_tree_mem[i * 2] + ggm_tree_mem[i * 2 + 2];
                 ot_msg_1 += ggm_tree_mem[i * 2 + 1] + ggm_tree_mem[i * 2 + 3];
             }
-            self.m[h - 1] = ot_msg_0.to_bytes_le();
-            self.m[h - 1] = ot_msg_1.to_bytes_le();
+            self.m0[h - 1] = ot_msg_0.to_bytes_le();
+            self.m1[h - 1] = ot_msg_1.to_bytes_le();
         }
 
         // Compute the secret sum

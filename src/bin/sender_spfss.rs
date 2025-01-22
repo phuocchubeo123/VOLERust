@@ -1,4 +1,8 @@
-use vole_rust::comm_channel::TcpChannel;
+extern crate vole_rust;
+extern crate lambdaworks_math;
+
+use vole_rust::comm_channel::CommunicationChannel;
+use vole_rust::socket_channel::TcpChannel;
 use vole_rust::spfss::SpfssSenderFp;
 use vole_rust::ot::OTPre;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
