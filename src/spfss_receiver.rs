@@ -29,7 +29,7 @@ impl SpfssRecverFp {
             ggm_tree: vec![FE::zero(); leave_n],
             m: vec![FE::zero(); depth - 1],
             b: vec![false; depth - 1],
-            choice_pos: 0,
+            choice_pos: (1 << depth - 1) - 1,
             depth,
             leave_n,
             share: FE::zero(),
@@ -40,6 +40,9 @@ impl SpfssRecverFp {
     pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
         ot.recv(io, &mut receive_data, &mut self.b, self.depth - 1, s);
+
+        println!("Messages received in PreOT: {:?}", receive_data);
+
         self.m = receive_data
             .iter()
             .map(|x| FE::from_bytes_le(x).unwrap())
@@ -130,7 +133,7 @@ impl SpfssRecverFp {
         io.send_stark252(&[x_star]).unwrap();
 
         // Compute W
-        let w = self.vector_inner_product(&chi, &self.ggm_tree) - z;
+        let w = vector_inner_product(&chi, &self.ggm_tree) - z;
 
         // Receive V and verify
         let v = io.receive_stark252(1).expect("Failed to receive V")[0];
@@ -142,12 +145,28 @@ impl SpfssRecverFp {
         }
     }
 
-    /// Compute modular inner product.
-    fn vector_inner_product(&self, vec1: &[FE], vec2: &[FE]) -> FE {
-        vec1.iter()
-            .zip(vec2)
-            .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
+    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, chi_alpha: &mut FE, w: &mut FE, io: &mut IO, beta: FE, seed: FE) {
+        let mut chi = vec![FE::zero(); self.leave_n];
+
+        let hash = Hash::new();
+        let digest = hash.hash_32byte_block(&seed.to_bytes_le());
+        let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
+
+        uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
+
+        *chi_alpha = chi[self.choice_pos];
+        *w = vector_inner_product(&chi, &self.ggm_tree);
+
+        // No idea
+        self.ggm_tree[self.choice_pos] += beta;
     }
+}
+
+/// Compute modular inner product.
+fn vector_inner_product(vec1: &[FE], vec2: &[FE]) -> FE {
+    vec1.iter()
+        .zip(vec2)
+        .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
 }
 
 pub fn uni_hash_coeff_gen(coeff: &mut [FE], seed: FE, sz: usize) {

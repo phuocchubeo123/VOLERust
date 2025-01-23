@@ -59,6 +59,13 @@ impl SpfssSenderFp {
             .iter()
             .map(|x| x.to_bytes_le())
             .collect::<Vec<[u8; 32]>>();
+
+        println!("Orignal elements in PreOT: {:?}", self.m0);
+        println!("Orignal elements in PreOT: {:?}", self.m1);
+
+        println!("Messages sent in PreOT: {:?}", ot_msg_0);
+        println!("Messages sent in PreOT: {:?}", ot_msg_1);
+
         ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
         io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }
@@ -84,8 +91,8 @@ impl SpfssSenderFp {
                     &mut self.ggm_tree[2*i..2*i+4], 
                     &ggm_tree_mem[i..i+2]
                 );
-                self.m0[h] += ggm_tree_mem[i * 2] + ggm_tree_mem[i * 2 + 2];
-                self.m1[h] += ggm_tree_mem[i * 2 + 1] + ggm_tree_mem[i * 2 + 3];
+                self.m0[h] += self.ggm_tree[i * 2] + self.ggm_tree[i * 2 + 2];
+                self.m1[h] += self.ggm_tree[i * 2 + 1] + self.ggm_tree[i * 2 + 3];
             }
             ggm_tree_mem[..2*sz].copy_from_slice(&self.ggm_tree[..2*sz]);
         }
@@ -112,18 +119,30 @@ impl SpfssSenderFp {
         let y_star = y + x_star * self.delta;
 
         // Compute V
-        let v = self.vector_inner_product(&chi, &self.ggm_tree) - y_star;
+        let v = vector_inner_product(&chi, &self.ggm_tree) - y_star;
 
         // Send V
         io.send_stark252(&[v]).expect("Failed to send V");
     }
 
-    /// Compute modular inner product.
-    fn vector_inner_product(&self, vec1: &[FE], vec2: &[FE]) -> FE {
-        vec1.iter()
-            .zip(vec2)
-            .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
+    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, v: &mut FE, io: &mut IO, seed: FE) {
+        let mut chi = vec![FE::zero(); self.leave_n];
+
+        let hash = Hash::new();
+        let digest = hash.hash_32byte_block(&seed.to_bytes_le());
+        let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
+
+        uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
+
+        *v = vector_inner_product(&chi, &self.ggm_tree);
     }
+}
+
+/// Compute modular inner product.
+fn vector_inner_product(vec1: &[FE], vec2: &[FE]) -> FE {
+    vec1.iter()
+        .zip(vec2)
+        .fold(FE::zero(), |acc, (v1, v2)| acc + (*v1 * *v2))
 }
 
 pub fn uni_hash_coeff_gen(coeff: &mut [FE], seed: FE, sz: usize) {
