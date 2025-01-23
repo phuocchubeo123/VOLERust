@@ -19,3 +19,4 @@ pub mod iknp;
 pub mod base_cot;
 pub mod spfss_sender;
 pub mod spfss_receiver;
+pub mod mpfss_reg;

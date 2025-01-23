@@ -79,3 +79,9 @@ name = "sender_spfss"
 
 [[bin]]
 name = "receiver_spfss"
+
+[[bin]]
+name = "sender_mpfss"
+
+[[bin]]
+name = "receiver_mpfss"
