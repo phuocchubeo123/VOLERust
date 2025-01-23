@@ -11,23 +11,21 @@ use std::convert::TryInto;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-pub struct SpfssRecverFp<'a, IO> {
-    io: &'a mut IO,
+pub struct SpfssRecverFp {
     ggm_tree: Vec<FE>,
     m: Vec<FE>,
-    b: Vec<bool>,
+    pub(crate) b: Vec<bool>,
     choice_pos: usize,
     depth: usize,
     leave_n: usize,
     share: FE,
 }
 
-impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
+impl SpfssRecverFp {
     /// Create a new SpfssRecverFp instance.
-    pub fn new(io: &'a mut IO, depth: usize) -> Self {
+    pub fn new(depth: usize) -> Self {
         let leave_n = 1 << (depth - 1);
         Self {
-            io,
             ggm_tree: vec![FE::zero(); leave_n],
             m: vec![FE::zero(); depth - 1],
             b: vec![false; depth - 1],
@@ -39,20 +37,28 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
     }
 
     /// Receive the message and reconstruct the tree.
-    pub fn recv(&mut self, ot: &mut OTPre, s: usize) {
+    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
-        ot.recv(self.io, &mut receive_data, &mut self.b, self.depth - 1, s);
+        ot.recv(io, &mut receive_data, &mut self.b, self.depth - 1, s);
         self.m = receive_data
             .iter()
             .map(|x| FE::from_bytes_le(x).unwrap())
             .collect::<Vec<FE>>();
-        self.share = self.io.receive_stark252(1).expect("Failed to receive share")[0];
+        self.share = io.receive_stark252(1).expect("Failed to receive share")[0];
     }
 
     /// Compute the GGM tree and reconstruct the nodes.
     pub fn compute(&mut self, ggm_tree_mem: &mut [FE], delta2: FE) {
         self.reconstruct_tree();
-        self.repair_tree(ggm_tree_mem, delta2);
+        ggm_tree_mem.copy_from_slice(&self.ggm_tree);
+
+        self.ggm_tree[self.choice_pos] = FE::zero();
+        let mut nodes_sum = FE::zero();
+        for i in 0..self.leave_n {
+            nodes_sum += ggm_tree_mem[i];
+        }
+        nodes_sum += self.share;
+        ggm_tree_mem[self.choice_pos] = delta2 - nodes_sum;
     }
 
     /// Reconstruct the GGM tree.
@@ -72,18 +78,6 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
                 self.layer_recover(i, 1, to_fill_idx + 1, self.m[i - 1], &mut prp);
             }
         }
-    }
-
-    /// Repair the GGM tree with delta2 and local shares.
-    fn repair_tree(&mut self, ggm_tree_mem: &mut [FE], delta2: FE) {
-        let mut nodes_sum = FE::zero();
-        for i in 0..self.leave_n {
-            nodes_sum += ggm_tree_mem[i];
-        }
-        nodes_sum += self.share;
-        nodes_sum = FE::from(0u64) - nodes_sum;
-
-        ggm_tree_mem[self.choice_pos] = delta2 + nodes_sum;
     }
 
     /// Recover a single layer of the GGM tree.
@@ -123,7 +117,7 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
     }
 
     /// Consistency check for the protocol.
-    pub fn consistency_check(&mut self, io2: &mut IO, z: FE, beta: FE) {
+    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, z: FE, beta: FE) {
         let hash = Hash::new();
         let digest = hash.hash_32byte_block(&self.share.to_bytes_le());
         let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
@@ -133,13 +127,13 @@ impl<'a, IO: CommunicationChannel> SpfssRecverFp<'a, IO> {
         // Compute x_star
         let x_star = chi[self.choice_pos] * beta - z;
         // Send x_star
-        self.io.send_stark252(&[x_star]);
+        io.send_stark252(&[x_star]).unwrap();
 
         // Compute W
         let w = self.vector_inner_product(&chi, &self.ggm_tree) - z;
 
         // Receive V and verify
-        let v = self.io.receive_stark252(1).expect("Failed to receive V")[0];
+        let v = io.receive_stark252(1).expect("Failed to receive V")[0];
 
         if w != v {
             panic!("SPFSS consistency check failed!");

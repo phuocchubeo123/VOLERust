@@ -34,39 +34,27 @@ fn main() {
     sender_cot.cot_gen_pre(None);
 
     // Original COT generation
-    let size = 512; // Number of COTs
-    // New COT generation using OTPre
-    let mut sender_pre_ot = OTPre::new(size, 1);
-    sender_cot.cot_gen_preot(&mut sender_pre_ot, size, None);
-
-    // Send data using OTPre
-    let mut m0 = vec![[0u8; 32]; size];
-    let mut m1 = vec![[0u8; 32]; size];
-    for i in 0..size {
-        m0[i] = [i as u8; 32];
-        m1[i] = [(i + 1) as u8; 32];
-    }
-
-    for (i, block) in m0.iter().enumerate().take(5) {
-        println!("Block {} of m0: {:?}", i, block);
-    }
-
-    for (i, block) in m1.iter().enumerate().take(5) {
-        println!("Block {} of m1: {:?}", i, block);
-    }
-
-    sender_pre_ot.send(&mut channel, &m0, &m1, size, 0);
-    println!("Sender sent data using OTPre::send()");
-
     const depth: usize = 4;
+    let size = depth - 1; // Number of COTs
+    let times = 2;
+    // New COT generation using OTPre
+    let mut sender_pre_ot = OTPre::new(size, times);
+    sender_cot.cot_gen_preot(&mut sender_pre_ot, size*times, None);
+
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta = rand_field_element();
     let gamma = rand_field_element();
 
     // Initialize Spfss for the sender
-    let mut sender_spfss = SpfssSenderFp::new(&mut channel, depth);
-    sender_spfss.compute(&mut ggm_tree_mem, delta, gamma);
-    sender_spfss.send(&mut sender_pre_ot, 0);
+    let mut sender_spfss = SpfssSenderFp::new(depth);
 
-    println!("GGM Tree: {:?}", ggm_tree_mem);
+    sender_pre_ot.choices_sender(&mut channel);
+
+    sender_spfss.compute(&mut ggm_tree_mem, delta, gamma);
+    sender_spfss.send(&mut channel, &mut sender_pre_ot, 0);
+
+    println!("GGM tree:");
+    for ggm in ggm_tree_mem.iter() {
+        println!("{:?}", ggm);
+    }
 }

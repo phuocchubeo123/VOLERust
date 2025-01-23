@@ -38,6 +38,7 @@ impl OTPre {
         let mut adjusted_bits = vec![false; self.length];
         for i in 0..self.length {
             adjusted_bits[i] = choices[i] ^ self.bits[self.count + i];
+            self.bits[self.count+i] = adjusted_bits[i].clone();
         }
         io.send_bits(&adjusted_bits).expect("Failed to send bits");
         self.count += self.length;
@@ -45,6 +46,7 @@ impl OTPre {
 
     /// Precompute data for the sender
     pub fn send_pre(&mut self, data: &[[u8; 32]], delta: [u8; 32]) {
+        println!("Send pre");
         let ccrh = CCRH::new();
         self.delta = Some(delta);
 

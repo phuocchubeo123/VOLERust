@@ -11,8 +11,7 @@ use std::convert::TryInto;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-pub struct SpfssSenderFp<'a, IO> {
-    io: &'a mut IO,
+pub struct SpfssSenderFp {
     seed: FE,
     delta: FE,
     secret_sum: FE,
@@ -24,15 +23,14 @@ pub struct SpfssSenderFp<'a, IO> {
     prg: PRG,
 }
 
-impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
+impl SpfssSenderFp {
     /// Create a new SpfssSenderFp instance.
-    pub fn new(io: &'a mut IO, depth: usize) -> Self {
+    pub fn new(depth: usize) -> Self {
         let leave_n = 1 << (depth - 1);
         let mut prg = PRG::new(None, 0);
         let mut seed = [FE::zero(); 1];
         prg.random_stark252_elements(&mut seed);
         Self {
-            io,
             seed: seed[0],
             delta: FE::zero(),
             secret_sum: FE::zero(),
@@ -52,7 +50,7 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
     }
 
     /// Send OT messages and secret sum.
-    pub fn send(&mut self, ot: &mut OTPre, s: usize) {
+    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
         let ot_msg_0 = self.m0
             .iter()
             .map(|x| x.to_bytes_le())
@@ -61,8 +59,8 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
             .iter()
             .map(|x| x.to_bytes_le())
             .collect::<Vec<[u8; 32]>>();
-        ot.send(self.io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
-        self.io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
+        ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
+        io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }
 
     /// Generate the GGM tree from the top.
@@ -101,7 +99,7 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
     }
 
     /// Consistency check: Protocol PI_spsVOLE
-    pub fn consistency_check(&mut self, y: FE) {
+    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, y: FE) {
         let hash = Hash::new();
         let digest = hash.hash_32byte_block(&self.secret_sum.to_bytes_le());
         let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
@@ -109,7 +107,7 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
         uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
 
         // Receive x_star
-        let x_star = self.io.receive_stark252(1).expect("Failed to receive x_star")[0];
+        let x_star = io.receive_stark252(1).expect("Failed to receive x_star")[0];
         // Compute y_star
         let y_star = y + x_star * self.delta;
 
@@ -117,7 +115,7 @@ impl<'a, IO: CommunicationChannel> SpfssSenderFp<'a, IO> {
         let v = self.vector_inner_product(&chi, &self.ggm_tree) - y_star;
 
         // Send V
-        self.io.send_stark252(&[v]).expect("Failed to send V");
+        io.send_stark252(&[v]).expect("Failed to send V");
     }
 
     /// Compute modular inner product.

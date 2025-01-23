@@ -35,36 +35,32 @@ fn main() {
     receiver_cot.cot_gen_pre(None);
 
     // Original COT generation
-    let size = 512; // Number of COTs
-    let mut choice_bits = vec![false; size];
+    const depth: usize = 4;
+    let size = depth - 1; // Number of COTs
+    let times = 2;
+    let mut choice_bits = vec![false; size*times];
     // Populate random choice bits
     for bit in &mut choice_bits {
         *bit = rand::random();
     }
 
     // New COT generation using OTPre
-    let mut receiver_pre_ot = OTPre::new(size, 1);
-    receiver_cot.cot_gen_preot(&mut receiver_pre_ot, size, Some(&choice_bits));
+    let mut receiver_pre_ot = OTPre::new(size, times);
+    receiver_cot.cot_gen_preot(&mut receiver_pre_ot, size*times, Some(&choice_bits));
 
-    // Receive data using OTPre
-    let mut received_data = vec![[0u8; 32]; size];
-    receiver_pre_ot.recv(&mut channel, &mut received_data, &choice_bits, size, 0);
-
-    println!("Choice bits: {:?}", &choice_bits[..5]);
-
-    println!("Receiver received data using OTPre::recv:");
-    for (i, block) in received_data.iter().enumerate().take(5) {
-        println!("Received Block {}: {:?}", i, block);
-    }
-
-    const depth: usize = 4;
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta2 = rand_field_element();
 
     // Initialize Spfss for the sender
-    let mut receiver_spfss = SpfssRecverFp::new(&mut channel, depth);
-    receiver_spfss.recv(&mut receiver_pre_ot, 0);
+    let mut receiver_spfss = SpfssRecverFp::new(depth);
+
+    receiver_pre_ot.choices_recver(&mut channel, &[false; depth - 1]);
+
+    receiver_spfss.recv(&mut channel, &mut receiver_pre_ot, 0);
     receiver_spfss.compute(&mut ggm_tree_mem, delta2);
 
-    println!("GGM Tree: {:?}", ggm_tree_mem);
+    println!("GGM tree:");
+    for ggm in ggm_tree_mem.iter() {
+        println!("{:?}", ggm);
+    }
 }
