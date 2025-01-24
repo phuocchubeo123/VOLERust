@@ -4,17 +4,16 @@ use p256::elliptic_curve::sec1::{ToEncodedPoint, FromEncodedPoint};
 use p256::elliptic_curve::{Field, Group}; 
 use p256::{Scalar, AffinePoint, ProjectivePoint};
 
-pub struct OTCO<'a, IO> {
-    pub(crate) io: &'a mut IO,
+pub struct OTCO {
 }
 
-impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
-    pub fn new(io: &'a mut IO) -> Self {
-        Self { io }
+impl OTCO {
+    pub fn new() -> Self {
+        Self { }
     }
 
     /// Sender's OT implementation
-    pub fn send(&mut self, data0: &[[u8; 16]], data1: &[[u8; 16]]) {
+    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, data0: &[[u8; 16]], data1: &[[u8; 16]]) {
         let length = data0.len();
         let mut rng = rand::thread_rng();
 
@@ -27,7 +26,7 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
 
         // Send A to the receiver
         let A_encoded = A_affine.to_encoded_point(false);
-        self.io.send_point(&A_encoded);
+        io.send_point(&A_encoded);
 
         // Compute (A * a)^-1
         let mut A_a_inverse = A * a;
@@ -38,7 +37,7 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
 
         // Receive B points and compute BA points
         for i in 0..length {
-            let b_point = self.io.receive_point();
+            let b_point = io.receive_point();
             let b_affine = AffinePoint::from_encoded_point(&b_point)
                 .expect("Failed to decode AffinePoint from EncodedPoint");
             let B_projective = ProjectivePoint::from(b_affine);
@@ -51,7 +50,7 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
             BA_points[i] = B_a + A_a_inverse;
         }
 
-        self.io.flush();
+        io.flush();
 
         // Encrypt and send the data
         for i in 0..length {
@@ -67,19 +66,19 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
             let encrypted0 = xor_blocks(&data0[i], &key_b);
             let encrypted1 = xor_blocks(&data1[i], &key_ba);
 
-            self.io.send_data(&[encrypted0, encrypted1]);
+            io.send_data(&[encrypted0, encrypted1]);
         }
     }
 
     /// Receiver's OT implementation
-    pub fn recv(&mut self, choices: &[bool], output: &mut Vec<[u8; 16]>) {
+    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool], output: &mut Vec<[u8; 16]>) {
         let length = choices.len();
         let mut rng = rand::thread_rng();
 
         // Generate random scalars `b`
         let b_scalars: Vec<Scalar> = (0..length).map(|_| Scalar::random(&mut rng)).collect();
 
-        let A_encoded = self.io.receive_point();
+        let A_encoded = io.receive_point();
         let A_affine = AffinePoint::from_encoded_point(&A_encoded)
             .expect("Invalid A point received");
         let A_projective = ProjectivePoint::from(A_affine);
@@ -94,10 +93,10 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
             }
 
             let B_encoded = B_projective.to_affine().to_encoded_point(false);
-            self.io.send_point(&B_encoded);
+            io.send_point(&B_encoded);
         }
 
-        self.io.flush();
+        io.flush();
 
         // Compute shared points and decrypt data
         for i in 0..length {
@@ -107,7 +106,7 @@ impl<'a, IO: CommunicationChannel> OTCO<'a, IO> {
                 i as u64,
             );
 
-            let encrypted = self.io.receive_data();
+            let encrypted = io.receive_data();
             output.push(if choices[i] {
                 xor_blocks(&encrypted[1], &key_as)
             } else {

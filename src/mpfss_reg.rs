@@ -122,7 +122,53 @@ impl MpfssReg {
     }
 
     pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, sparse_vector: &mut [FE]) {
-        // TODO
+        for i in 0..self.tree_n {
+            let b = vec![false; self.tree_height - 1];
+            ot.choices_recver(io, &b);
+        }
+        ot.reset();
+
+        for i in 0..self.tree_n {
+            let mut receiver = SpfssRecverFp::new(self.tree_height);
+            self.item_pos_receiver[i] = receiver.get_index();
+            receiver.recv(io, ot, i);
+            receiver.compute(&mut self.ggm_tree[i], self.triple_yz[i]);
+            sparse_vector[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
+
+            if self.is_malicious {
+                let mut seed = vec![FE::zero(); 1];
+                self.seed_expand(io, &mut seed, 1);
+                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, self.triple_yz[i], seed[0]);
+            }
+        }
+
+        if self.is_malicious {
+            let mut beta_mul_chialpha = FE::zero();
+            for i in 0..self.tree_n {
+                beta_mul_chialpha += self.check_chialpha_buf[i] * self.triple_yz[i];
+            }
+            let x_star = self.triple_yz[self.tree_n] - beta_mul_chialpha;
+            io.send_stark252(&[x_star]).expect("Cannot send x_star.");
+
+            let mut va = FE::zero();
+            va = va - self.triple_yz[self.tree_n];
+            for i in 0..self.tree_n {
+                va += self.check_vw_buf[i];
+            }
+
+            let hash = Hash::new();
+            let digest = hash.hash_32byte_block(&va.to_bytes_le());
+            let h = FE::from_bytes_le(&digest).unwrap();
+
+            let r = io.receive_stark252(1).expect("Cound not receive h from Sender")[0];
+
+            if r != h {
+                panic!("Consistency check for Mpfss failed!");
+            } else {
+                println!("Consistency check for Mpfss successful!");
+            }
+        }
+
     }
 
     pub fn seed_expand<IO: CommunicationChannel>(&mut self, io: &mut IO, seed: &mut [FE], threads: usize) {

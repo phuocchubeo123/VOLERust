@@ -8,21 +8,20 @@ use std::time::Instant;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-pub struct Cope<'a, IO> {
+pub struct Cope {
     party: u8,                     // 0 for sender, 1 for receiver
     m: usize,                      // Number of field elements
     delta: Option<FE>,             // Delta value for the sender
     delta_bool: Vec<bool>,         // Boolean representation of delta
     prg_g0: Option<Vec<PRG>>,      // PRGs for the 0-choice
     prg_g1: Option<Vec<PRG>>,      // PRGs for the 1-choice (receiver)
-    pub(crate) io: &'a mut IO,                // Reference to the IO object
     mask: u128,                    // Mask for modular reduction
     powers_of_two: Vec<FE>,        // Precomputed powers of two
 }
 
-impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
+impl Cope {
     /// Create a new COPE instance.
-    pub fn new(party: u8, io: &'a mut IO, m: usize) -> Self {
+    pub fn new(party: u8, m: usize) -> Self {
         Self {
             party,
             m,
@@ -30,7 +29,6 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
             delta_bool: vec![false; m],
             prg_g0: None,
             prg_g1: None,
-            io,
             mask: u128::MAX,
             powers_of_two: vec![], // Initialize empty, will be filled in `initialize_*`
         }
@@ -61,15 +59,15 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         self.powers_of_two = powers;
     }
 
-    pub fn initialize_sender(&mut self, delta: FE) {
+    pub fn initialize_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE) {
         self.delta = Some(delta);
         self.delta_bool = Self::delta_to_bool(&delta, self.m);
         self.precompute_powers_of_two(); // Precompute powers of two
 
         // Prepare keys using OTCO
         let mut k = Vec::new();
-        let mut otco = OTCO::new(self.io);
-        otco.recv(&self.delta_bool, &mut k);
+        let mut otco = OTCO::new();
+        otco.recv(io, &self.delta_bool, &mut k);
 
         // Initialize PRGs
         self.prg_g0 = Some(
@@ -87,7 +85,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         assert_eq!(self.prg_g0.as_ref().unwrap().len(), self.m, "Mismatch in prg_g0 length after initialization");
     }
 
-    pub fn initialize_receiver(&mut self) {
+    pub fn initialize_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO) {
         self.precompute_powers_of_two(); // Precompute powers of two
 
         let mut k0 = vec![[0u8; 16]; self.m];
@@ -99,8 +97,8 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         key_prg.random_block(&mut k1);
 
         // Use OTCO to send keys
-        let mut otco = OTCO::new(self.io);
-        otco.send(&k0, &k1);
+        let mut otco = OTCO::new();
+        otco.send(io, &k0, &k1);
 
         // Initialize PRGs
         self.prg_g0 = Some(
@@ -125,7 +123,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         );
     }
 
-    pub fn extend_sender(&mut self) -> FE {
+    pub fn extend_sender<IO: CommunicationChannel>(&mut self, io: &mut IO) -> FE {
         let mut w = vec![FE::zero(); self.m];
 
         if let Some(prgs) = &mut self.prg_g0 {
@@ -147,7 +145,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         // }
 
         // Receive v from the receiver
-        let mut v = self.io.receive_stark252(self.m).expect("Failed to receive v");
+        let mut v = io.receive_stark252(self.m).expect("Failed to receive v");
 
         // Adjust v based on delta_bool
         for i in 0..self.m {
@@ -162,7 +160,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         self.prm2pr(&v)
     }
 
-    pub fn extend_sender_batch(&mut self, ret: &mut [FE], size: usize) {
+    pub fn extend_sender_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], size: usize) {
         let mut w = vec![vec![FE::zero(); size]; self.m];
         let mut v = vec![vec![FE::zero(); size]; self.m];
 
@@ -174,10 +172,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         }
 
         // Receive v values from the receiver
-        let received_data = self
-            .io
-            .receive_stark252(self.m * size)
-            .expect("Failed to receive v");
+        let received_data = io.receive_stark252(self.m * size).expect("Failed to receive v");
         for i in 0..self.m {
             for j in 0..size {
                 v[i][j] = received_data[i * size + j];
@@ -199,7 +194,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         self.prm2pr_batch(ret, &v);
     }
 
-    pub fn extend_receiver(&mut self, u: FE) -> FE {
+    pub fn extend_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, u: FE) -> FE {
         let mut w0 = vec![FE::zero(); self.m];
         let mut w1 = vec![FE::zero(); self.m];
         let mut tau = vec![FE::zero(); self.m];
@@ -216,15 +211,13 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
         }
 
         // Send tau to the sender
-        self.io
-            .send_stark252(&tau)
-            .expect("Failed to send tau");
+        io.send_stark252(&tau).expect("Failed to send tau");
 
         // Aggregate w0 into a single field element
         self.prm2pr(&w0)
     }
 
-    pub fn extend_receiver_batch(&mut self, ret: &mut [FE], u: &[FE], size: usize) {
+    pub fn extend_receiver_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], u: &[FE], size: usize) {
         let mut w0 = vec![vec![FE::zero(); size]; self.m];
         let mut w1 = vec![vec![FE::zero(); size]; self.m];
         let mut tau = vec![vec![FE::zero(); size]; self.m];
@@ -255,9 +248,7 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
 
         // assert_eq!(tau_flat.clone().len(), self.m * size, "tau_flat mismatch type");
 
-        self.io
-            .send_stark252(&tau_flat)
-            .expect("Failed to send tau");
+        io.send_stark252(&tau_flat).expect("Failed to send tau");
 
         // Aggregate w0 batch results into ret
         self.prm2pr_batch(ret, &w0);
@@ -282,25 +273,15 @@ impl<'a, IO: CommunicationChannel> Cope<'a, IO> {
     }
 
     /// Consistency check function where `a` has only one `FE`
-    pub fn check_triple(&mut self, a: &[FE], b: &[FE], sz: usize) {
+    pub fn check_triple<IO: CommunicationChannel>(&mut self, io: &mut IO, a: &[FE], b: &[FE], sz: usize) {
         if self.party == 0 {
             // Sender's role
-            self.io
-                .send_stark252(a)
-                .expect("Failed to send `a` in check_triple");
-            self.io
-                .send_stark252(b)
-                .expect("Failed to send `b` in check_triple");
+            io.send_stark252(a).expect("Failed to send `a` in check_triple");
+            io.send_stark252(b).expect("Failed to send `b` in check_triple");
         } else {
             // Receiver's role
-            let delta = self
-                .io
-                .receive_stark252(1)
-                .expect("Failed to receive `delta` in check_triple")[0];
-            let c = self
-                .io
-                .receive_stark252(sz)
-                .expect("Failed to receive `c` in check_triple");
+            let delta = io.receive_stark252(1).expect("Failed to receive `delta` in check_triple")[0];
+            let c = io.receive_stark252(sz).expect("Failed to receive `c` in check_triple");
 
             // Perform the consistency check
             for i in 0..sz {

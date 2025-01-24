@@ -3,17 +3,17 @@ use crate::prg::PRG;
 use crate::comm_channel::CommunicationChannel;
 use crate::preot::OTPre;
 
-pub struct BaseCot<'a, IO: CommunicationChannel> {
+pub struct BaseCot {
     party: u8, // Alice: 0, Bob: 1
     one: [u8; 32],
     minus_one: [u8; 32],
     ot_delta: Option<[u8; 32]>,
-    iknp: IKNP<'a, IO>,
+    iknp: IKNP,
     malicious: bool,
 }
 
-impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
-    pub fn new(party: u8, io: &'a mut IO, malicious: bool) -> Self {
+impl BaseCot {
+    pub fn new(party: u8, malicious: bool) -> Self {
         let one = [
             1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -28,7 +28,7 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
             one,
             minus_one,
             ot_delta: None,
-            iknp: IKNP::new(io, malicious),
+            iknp: IKNP::new(malicious),
             malicious,
         }
     }
@@ -38,9 +38,9 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
             if self.party == 0 {
                 self.ot_delta = Some(deltain);
                 let delta_bool = block_to_bool(&deltain);
-                self.iknp.setup_send(Some(&delta_bool), None);
+                self.iknp.setup_send(io, Some(&delta_bool), None);
             } else {
-                self.iknp.setup_recv(None, None);
+                self.iknp.setup_recv(io, None, None);
             }
         } else {
             if self.party == 0 {
@@ -59,10 +59,10 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
         }
     }
 
-    pub fn cot_gen(&mut self, ot_data: &mut [[u8; 32]], size: usize, pre_bool: Option<&[bool]>) {
+    pub fn cot_gen<IO: CommunicationChannel>(&mut self, io: &mut IO, ot_data: &mut [[u8; 32]], size: usize, pre_bool: Option<&[bool]>) {
         if self.party == 0 {
-            self.iknp.send_cot(ot_data, size);
-            self.iknp.base_ot.io.flush();
+            self.iknp.send_cot(io, ot_data, size);
+            io.flush();
             for block in ot_data.iter_mut() {
                 *block = bitwise_and(block, &self.minus_one);
             }
@@ -79,7 +79,7 @@ impl<'a, IO: CommunicationChannel> BaseCot<'a, IO> {
                 prg.random_bool_array(&mut pre_bool_ini);
             }
 
-            self.iknp.recv_cot(ot_data, &pre_bool_ini, size);
+            self.iknp.recv_cot(io, ot_data, &pre_bool_ini, size);
 
             let ch = [
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

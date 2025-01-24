@@ -36,6 +36,17 @@ impl SpfssRecverFp {
         }
     }
 
+    pub fn get_index(&self) -> usize {
+        let mut choice_pos = 0;
+        for i in 0..self.depth-1 {
+            choice_pos <<= 1;
+            if !self.b[i] {
+                choice_pos += 1;
+            }
+        }
+        choice_pos
+    }
+
     /// Receive the message and reconstruct the tree.
     pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
