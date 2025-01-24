@@ -39,16 +39,15 @@ fn main() {
     // Set up the sender's precomputation phase
     sender_cot.cot_gen_pre(&mut channel, None);
     let mut pre_ot = OTPre::new(log_bin_sz, t);
-    sender_cot.cot_gen_preot(&mut channel, &mut pre_ot, log_bin_sz, None);
+    sender_cot.cot_gen_preot(&mut channel, &mut pre_ot, log_bin_sz*t, None);
 
 
     let delta = rand_field_element();
-    let triple_n0 = 1 + t + k;
-    let mut key = vec![FE::zero(); triple_n0];
+    let mut key = vec![FE::zero(); t+1];
 
     // Base sVOLE first
     let mut svole = BaseSvole::new_sender(&mut channel, delta);
-    svole.triple_gen_send(&mut channel, &mut key, triple_n0);
+    svole.triple_gen_send(&mut channel, &mut key, t+1);
 
     let mut y = vec![FE::zero(); n];
     let mut mpfss = MpfssReg::new::<n, t, log_bin_sz>(0);

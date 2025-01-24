@@ -100,7 +100,7 @@ impl BaseCot {
         if self.party == 0 {
             // ALICE
             self.iknp.send_cot(io, &mut ot_data, size);
-            io.flush();
+            // io.flush();
 
             // Apply `minus_one` to all blocks
             for block in ot_data.iter_mut() {

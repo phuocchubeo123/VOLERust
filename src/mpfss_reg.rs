@@ -45,7 +45,7 @@ impl MpfssReg {
             is_malicious: false,
             prg: PRG::new(None, 0),
             secret_share_x: FE::zero(),
-            ggm_tree: vec![vec![FE::zero();t]; 1 << log_bin_sz],
+            ggm_tree: vec![vec![FE::zero(); 1 << log_bin_sz]; t],
             check_chialpha_buf: vec![FE::zero(); t],
             check_vw_buf: vec![FE::zero(); t],
             item_pos_receiver: vec![0; t],

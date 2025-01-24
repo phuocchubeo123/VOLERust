@@ -60,11 +60,11 @@ impl SpfssSenderFp {
             .map(|x| x.to_bytes_le())
             .collect::<Vec<[u8; 32]>>();
 
-        println!("Orignal elements in PreOT: {:?}", self.m0);
-        println!("Orignal elements in PreOT: {:?}", self.m1);
+        // println!("Orignal elements in PreOT: {:?}", self.m0);
+        // println!("Orignal elements in PreOT: {:?}", self.m1);
 
-        println!("Messages sent in PreOT: {:?}", ot_msg_0);
-        println!("Messages sent in PreOT: {:?}", ot_msg_1);
+        // println!("Messages sent in PreOT: {:?}", ot_msg_0);
+        // println!("Messages sent in PreOT: {:?}", ot_msg_1);
 
         ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
         io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
@@ -73,6 +73,7 @@ impl SpfssSenderFp {
     /// Generate the GGM tree from the top.
     // Generate the GGM tree to ggm_tree_mem first, then copy it into self.ggm_tree for later check
     fn ggm_tree_gen(&mut self, ggm_tree_mem: &mut [FE], secret: FE, gamma: FE) {
+        println!("The length of ggm_tree_mem is: {}", ggm_tree_mem.len());
         let mut prp = TwoKeyPRP::new();
         // Generate the first layer of the GGM tree
         prp.node_expand_1to2(&mut ggm_tree_mem[0..2], &self.seed);
