@@ -29,10 +29,10 @@ fn main() {
     let mut channel = TcpChannel::new(stream);
 
     // Initialize BaseCot for the receiver (BOB)
-    let mut receiver_cot = BaseCot::new(1, &mut channel, false);
+    let mut receiver_cot = BaseCot::new(1, false);
 
     // Set up the receiver's precomputation phase
-    receiver_cot.cot_gen_pre(None);
+    receiver_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
     const depth: usize = 4;
@@ -46,7 +46,7 @@ fn main() {
 
     // New COT generation using OTPre
     let mut receiver_pre_ot = OTPre::new(size, times);
-    receiver_cot.cot_gen_preot(&mut receiver_pre_ot, size*times, Some(&choice_bits));
+    receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size*times, Some(&choice_bits));
 
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta2 = rand_field_element();

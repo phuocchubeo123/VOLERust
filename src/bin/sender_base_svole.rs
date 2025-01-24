@@ -38,7 +38,7 @@ fn main() {
 
     let start = Instant::now();
 
-    sender_svole.triple_gen_send(&mut shares, batch_size);
+    sender_svole.triple_gen_send(&mut channel, &mut shares, batch_size);
 
     let duration = start.elapsed();
     println!("Triple generation (send) time: {:?}", duration);

@@ -50,9 +50,9 @@ fn main() {
 
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
-    let mut sender_cope = Cope::new(0, &mut channel, m);
+    let mut sender_cope = Cope::new(0, m);
 
 
     // Perform the check
-    sender_cope.check_triple(&[delta], &[c], 1);
+    sender_cope.check_triple(&mut channel, &[delta], &[c], 1);
 }

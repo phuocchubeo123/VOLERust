@@ -28,10 +28,10 @@ fn main() {
     let mut channel = TcpChannel::new(stream);
 
     // Initialize BaseCot for the sender (ALICE)
-    let mut sender_cot = BaseCot::new(0, &mut channel, false);
+    let mut sender_cot = BaseCot::new(0, false);
 
     // Set up the sender's precomputation phase
-    sender_cot.cot_gen_pre(None);
+    sender_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
     const depth: usize = 4;
@@ -39,7 +39,7 @@ fn main() {
     let times = 2;
     // New COT generation using OTPre
     let mut sender_pre_ot = OTPre::new(size, times);
-    sender_cot.cot_gen_preot(&mut sender_pre_ot, size*times, None);
+    sender_cot.cot_gen_preot(&mut channel, &mut sender_pre_ot, size*times, None);
 
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta = rand_field_element();

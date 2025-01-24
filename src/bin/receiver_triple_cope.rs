@@ -40,7 +40,7 @@ fn main() {
 
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
-    let mut receiver_cope = Cope::new(1, &mut channel, m);
+    let mut receiver_cope = Cope::new(1, m);
 
     println!("Receiver values:");
     println!("A: {}", a);
@@ -54,5 +54,5 @@ fn main() {
     // let c = b - a * delta;
 
     // Perform the check
-    receiver_cope.check_triple(&[a], &[b], 1);
+    receiver_cope.check_triple(&mut channel, &[a], &[b], 1);
 }

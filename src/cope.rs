@@ -137,13 +137,6 @@ impl Cope {
             }
         }
 
-        // // Generate random w values using PRGs
-        // if let Some(prgs) = &mut self.prg_g0 {
-        //     for (i, prg) in prgs.iter_mut().enumerate() {
-        //         prg.random_stark252_elements(&mut [w[i]]);
-        //     }
-        // }
-
         // Receive v from the receiver
         let mut v = io.receive_stark252(self.m).expect("Failed to receive v");
 
@@ -249,6 +242,7 @@ impl Cope {
         // assert_eq!(tau_flat.clone().len(), self.m * size, "tau_flat mismatch type");
 
         io.send_stark252(&tau_flat).expect("Failed to send tau");
+        io.flush();
 
         // Aggregate w0 batch results into ret
         self.prm2pr_batch(ret, &w0);

@@ -14,8 +14,8 @@ fn main() {
     let mut output = Vec::new();
 
     // Initialize OTCO and receive
-    let mut otco = OTCO::new(&mut channel);
-    otco.recv(&choices, &mut output);
+    let mut otco = OTCO::new();
+    otco.recv(&mut channel, &choices, &mut output);
 
     // Verify the output
     println!("Received output: {:?}", output);

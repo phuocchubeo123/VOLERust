@@ -27,7 +27,7 @@ impl BaseSvole {
     }
 
     /// Receiver's constructor
-    pub fn new_receiver() -> Self {
+    pub fn new_receiver<IO: CommunicationChannel>(io: &mut IO) -> Self {
         let mut cope = Cope::new(1, F::field_bit_size());
         cope.initialize_receiver(io);
         Self {
@@ -42,21 +42,23 @@ impl BaseSvole {
         self.cope.extend_sender_batch(io, share, size);
         let mut b = vec![FE::zero(); 1];
         self.cope.extend_sender_batch(io, &mut b, 1);
-        self.sender_check(share, b[0], size);
+        self.sender_check(io, share, b[0], size);
     }
 
     /// Receiver: Triple generation
-    pub fn triple_gen_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, share: &mut [FE], u: &[FE], size: usize) {
+    pub fn triple_gen_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, share: &mut [FE], u: &mut [FE], size: usize) {
         let mut prg = PRG::new(None, 0);
         let mut x = vec![FE::zero(); 1];
         prg.random_stark252_elements(&mut x);
+
+        prg.random_stark252_elements(u);
 
         self.cope.extend_receiver_batch(io, share, u, size);
 
         let mut c = vec![FE::zero(); 1];
         self.cope.extend_receiver_batch(io, &mut c, &x, 1);
 
-        self.receiver_check(share, u, c[0], x[0], size);
+        self.receiver_check(io, share, u, c[0], x[0], size);
     }
 
     /// Sender: Consistency check

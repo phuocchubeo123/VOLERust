@@ -31,18 +31,18 @@ fn main() {
 
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
-    let mut sender_cope = Cope::new(0, &mut channel, m);
+    let mut sender_cope = Cope::new(0, m);
 
     // Generate a random delta
     let delta = rand_field_element(&mut rng);
     println!("Sender delta: {}", delta);
 
     // Sender initializes with delta
-    sender_cope.initialize_sender(delta);
+    sender_cope.initialize_sender(&mut channel, delta);
 
     // Test extend
-    let single_result = sender_cope.extend_sender();
-    sender_cope.check_triple(&[delta], &[single_result], 1);
+    let single_result = sender_cope.extend_sender(&mut channel);
+    sender_cope.check_triple(&mut channel, &[delta], &[single_result], 1);
 
     // // Test extend
     // let single_result = sender_cope.extend_sender();
@@ -51,13 +51,13 @@ fn main() {
     let start = Instant::now();
 
     // Test extend_batch
-    let batch_size = 100;
+    let batch_size = 20000;
     let mut batch_result = vec![FE::zero(); batch_size];
-    sender_cope.extend_sender_batch(&mut batch_result, batch_size);
+    sender_cope.extend_sender_batch(&mut channel, &mut batch_result, batch_size);
 
     let duration = start.elapsed();
     println!("Time taken: {:?}", duration);
 
-    sender_cope.check_triple(&[delta], &batch_result, batch_size);
+    sender_cope.check_triple(&mut channel, &[delta], &batch_result, batch_size);
 
 }

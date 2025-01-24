@@ -12,15 +12,15 @@ fn main() {
     let mut channel = TcpChannel::new(stream);
 
     // Initialize BaseCot for the sender (ALICE)
-    let mut sender_cot = BaseCot::new(0, &mut channel, false);
+    let mut sender_cot = BaseCot::new(0, false);
 
     // Set up the sender's precomputation phase
-    sender_cot.cot_gen_pre(None);
+    sender_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
     let size = 512; // Number of COTs
     let mut original_ot_data = vec![[0u8; 32]; size];
-    sender_cot.cot_gen(&mut original_ot_data, size, None);
+    sender_cot.cot_gen(&mut channel, &mut original_ot_data, size, None);
 
     // Print the original COT data
     println!("Sender Original COT data:");
@@ -29,12 +29,12 @@ fn main() {
     }
 
     // Check correctness of the original COT data
-    let is_original_valid = sender_cot.check_cot(&original_ot_data, size);
+    let is_original_valid = sender_cot.check_cot(&mut channel, &original_ot_data, size);
     println!("Original COT validation result: {}", is_original_valid);
 
         // New COT generation using OTPre
     let mut sender_pre_ot = OTPre::new(size, 1);
-    sender_cot.cot_gen_preot(&mut sender_pre_ot, size, None);
+    sender_cot.cot_gen_preot(&mut channel, &mut sender_pre_ot, size, None);
 
     // Send data using OTPre
     let mut m0 = vec![[0u8; 32]; size];

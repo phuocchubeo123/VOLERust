@@ -33,7 +33,7 @@ impl BaseCot {
         }
     }
 
-    pub fn cot_gen_pre(&mut self, deltain: Option<[u8; 32]>) {
+    pub fn cot_gen_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, deltain: Option<[u8; 32]>) {
         if let Some(deltain) = deltain {
             if self.party == 0 {
                 self.ot_delta = Some(deltain);
@@ -52,9 +52,9 @@ impl BaseCot {
                 delta = bitwise_xor(&delta, &self.one);
                 self.ot_delta = Some(delta);
                 let delta_bool = block_to_bool(&delta);
-                self.iknp.setup_send(Some(&delta_bool), None);
+                self.iknp.setup_send(io, Some(&delta_bool), None);
             } else {
-                self.iknp.setup_recv(None, None);
+                self.iknp.setup_recv(io, None, None);
             }
         }
     }
@@ -94,13 +94,13 @@ impl BaseCot {
         }
     }
 
-    pub fn cot_gen_preot(&mut self, pre_ot: &mut OTPre, size: usize, pre_bool: Option<&[bool]>) {
+    pub fn cot_gen_preot<IO: CommunicationChannel>(&mut self, io: &mut IO, pre_ot: &mut OTPre, size: usize, pre_bool: Option<&[bool]>) {
         let mut ot_data = vec![[0u8; 32]; size]; // Allocate space for `ot_data`
 
         if self.party == 0 {
             // ALICE
-            self.iknp.send_cot(&mut ot_data, size);
-            self.iknp.base_ot.io.flush();
+            self.iknp.send_cot(io, &mut ot_data, size);
+            io.flush();
 
             // Apply `minus_one` to all blocks
             for block in ot_data.iter_mut() {
@@ -126,7 +126,7 @@ impl BaseCot {
             }
 
             // Call `recv_cot` on `iknp`
-            self.iknp.recv_cot(&mut ot_data, &pre_bool_ini, size);
+            self.iknp.recv_cot(io, &mut ot_data, &pre_bool_ini, size);
 
             let ch = [
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -146,20 +146,20 @@ impl BaseCot {
     }
 
     // Debugging check for COT
-    pub fn check_cot(&mut self, data: &[[u8; 32]], len: usize) -> bool {
+    pub fn check_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &[[u8; 32]], len: usize) -> bool {
         if self.party == 0 {
             if let Some(delta) = self.ot_delta {
-                self.iknp.base_ot.io.send_32byte_block(&[delta]);
+                io.send_32byte_block(&[delta]);
             }
-            self.iknp.base_ot.io.send_32byte_block(data);
-            self.iknp.base_ot.io.flush();
+            io.send_32byte_block(data);
+            io.flush();
             true
         } else {
             let mut tmp = vec![[0u8; 32]; len];
             let mut ch = [[0u8; 32]; 2];
-            ch[1] = self.iknp.base_ot.io.receive_32byte_block()[0];
+            ch[1] = io.receive_32byte_block()[0];
             ch[0] = [0u8; 32];
-            tmp = self.iknp.base_ot.io.receive_32byte_block();
+            tmp = io.receive_32byte_block();
             for i in 0..len {
                 tmp[i] = bitwise_xor(&tmp[i], &ch[get_lsb(&data[i]) as usize]);
             }

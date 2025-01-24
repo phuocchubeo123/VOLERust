@@ -32,18 +32,18 @@ fn main() {
 
     // Set up COPE
     let m = F::field_bit_size(); // Number of field elements
-    let mut receiver_cope = Cope::new(1, &mut channel, m);
+    let mut receiver_cope = Cope::new(1, m);
 
     // Receiver initializes
-    receiver_cope.initialize_receiver();
+    receiver_cope.initialize_receiver(&mut channel);
 
     // Generate a random u
     let u = rand_field_element(&mut rng);
     println!("Receiver u: {}", u);
 
     // Test extend
-    let single_result = receiver_cope.extend_receiver(u);
-    receiver_cope.check_triple(&[u], &[single_result], 1);
+    let single_result = receiver_cope.extend_receiver(&mut channel, u);
+    receiver_cope.check_triple(&mut channel, &[u], &[single_result], 1);
 
     // // Test extend
     // let single_result = receiver_cope.extend_receiver(u);
@@ -52,14 +52,14 @@ fn main() {
     let start = Instant::now();
 
     // Test extend_batch
-    let batch_size = 100;
+    let batch_size = 20000;
     let u_batch: Vec<FE> = (0..batch_size).map(|_| rand_field_element(&mut rng)).collect();
     let mut batch_result = vec![FE::zero(); batch_size];
-    receiver_cope.extend_receiver_batch(&mut batch_result, &u_batch, batch_size);
+    receiver_cope.extend_receiver_batch(&mut channel, &mut batch_result, &u_batch, batch_size);
 
     let duration = start.elapsed();
     println!("Time taken: {:?}", duration);
 
-    receiver_cope.check_triple(&u_batch, &batch_result, batch_size);
+    receiver_cope.check_triple(&mut channel, &u_batch, &batch_result, batch_size);
 
 }

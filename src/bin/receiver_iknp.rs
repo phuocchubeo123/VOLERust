@@ -13,15 +13,15 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut io = TcpChannel::new(stream);
 
-    let mut receiver_iknp = IKNP::new(&mut io, true);
-    receiver_iknp.setup_recv(None, None);
+    let mut receiver_iknp = IKNP::new(true);
+    receiver_iknp.setup_recv(&mut io, None, None);
 
     const length: usize = 2048;
     let mut data = vec![[0u8; 32]; length];
     let mut rng = rand::thread_rng();
     let r: [bool; length] = [(); length].map(|_| rng.gen_bool(0.5)); // Example choice bits
 
-    receiver_iknp.recv_cot(&mut data, &r, length);
+    receiver_iknp.recv_cot(&mut io, &mut data, &r, length);
 
     println!("Choice bits: {:?}", &r[..5]);
     println!("Receiver COT data: {:?}", &data[..5]);

@@ -10,12 +10,12 @@ fn main() {
     let stream = TcpStream::connect("127.0.0.1:12345").expect("Failed to connect to receiver");
     let mut io = TcpChannel::new(stream);
 
-    let mut sender_iknp = IKNP::new(&mut io, true);
-    sender_iknp.setup_send(None, None);
+    let mut sender_iknp = IKNP::new(true);
+    sender_iknp.setup_send(&mut io, None, None);
 
     let length = 2048;
     let mut data = vec![[0u8; 32]; length];
-    sender_iknp.send_cot(&mut data, length);
+    sender_iknp.send_cot(&mut io, &mut data, length);
 
     println!("Sender COT data: {:?}", &data[..5]);
 }

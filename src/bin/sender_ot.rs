@@ -18,8 +18,8 @@ fn main() {
         let data1 = vec![[1u8; 16]; 2];
 
         // Initialize OTCO and send
-        let mut otco = OTCO::new(&mut channel);
-        otco.send(&data0, &data1);
+        let mut otco = OTCO::new();
+        otco.send(&mut channel, &data0, &data1);
 
         println!("Sender finished sending data");
     }

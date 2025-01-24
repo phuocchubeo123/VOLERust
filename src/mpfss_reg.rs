@@ -27,7 +27,8 @@ pub struct MpfssReg {
     check_chialpha_buf: Vec<FE>,
     check_vw_buf: Vec<FE>,
     item_pos_receiver: Vec<usize>,
-    triple_yz: Vec<FE>,
+    triple_y: Vec<FE>,
+    triple_z: Vec<FE>,
 }
 
 impl MpfssReg {
@@ -48,7 +49,8 @@ impl MpfssReg {
             check_chialpha_buf: vec![FE::zero(); t],
             check_vw_buf: vec![FE::zero(); t],
             item_pos_receiver: vec![0; t],
-            triple_yz: vec![FE::zero(); t+1],
+            triple_y: vec![FE::zero(); t+1],
+            triple_z: vec![FE::zero(); t+1],
         }
     }
 
@@ -71,17 +73,9 @@ impl MpfssReg {
         }
     }
 
-    pub fn mpfss<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_yz: &[FE], sparse_vector: &mut [FE]) {
-        self.triple_yz.copy_from_slice(triple_yz);
-        if self.party == 0 {
-            self.mpfss_sender(io, ot, sparse_vector);
-        } else {
-            self.mpfss_receiver(io, ot, sparse_vector);
-        }
+    pub fn mpfss_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], sparse_vector: &mut [FE]) {
+        self.triple_y.copy_from_slice(triple_y);
 
-    }
-
-    pub fn mpfss_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, sparse_vector: &mut [FE]) {
         // Set up PreOT first
         for i in 0..self.tree_n {
             ot.choices_sender(io);
@@ -91,7 +85,7 @@ impl MpfssReg {
         // Now start doing Spfss
         for i in 0..self.tree_n {
             let mut sender = SpfssSenderFp::new(self.tree_height);
-            sender.compute(&mut self.ggm_tree[i], self.secret_share_x, self.triple_yz[i]);
+            sender.compute(&mut self.ggm_tree[i], self.secret_share_x, self.triple_y[i]);
             sender.send(io, ot, i);
             sparse_vector[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
 
@@ -107,7 +101,7 @@ impl MpfssReg {
         // consistency batch check
         if self.is_malicious {
             let x_star = io.receive_stark252(1).expect("Failed to receive x_star")[0];
-            let tmp = self.secret_share_x * x_star + self.triple_yz[self.tree_n];
+            let tmp = self.secret_share_x * x_star + self.triple_y[self.tree_n];
             let mut vb = FE::zero();
             vb = vb - tmp;
             for i in 0..self.tree_n {
@@ -121,7 +115,10 @@ impl MpfssReg {
         }
     }
 
-    pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, sparse_vector: &mut [FE]) {
+    pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], triple_z: &[FE], sparse_vector: &mut [FE]) {
+        self.triple_y.copy_from_slice(triple_y);
+        self.triple_z.copy_from_slice(triple_z);
+
         for i in 0..self.tree_n {
             let b = vec![false; self.tree_height - 1];
             ot.choices_recver(io, &b);
@@ -132,26 +129,26 @@ impl MpfssReg {
             let mut receiver = SpfssRecverFp::new(self.tree_height);
             self.item_pos_receiver[i] = receiver.get_index();
             receiver.recv(io, ot, i);
-            receiver.compute(&mut self.ggm_tree[i], self.triple_yz[i]);
+            receiver.compute(&mut self.ggm_tree[i], self.triple_z[i]);
             sparse_vector[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
 
             if self.is_malicious {
                 let mut seed = vec![FE::zero(); 1];
                 self.seed_expand(io, &mut seed, 1);
-                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, self.triple_yz[i], seed[0]);
+                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, self.triple_z[i], seed[0]);
             }
         }
 
         if self.is_malicious {
             let mut beta_mul_chialpha = FE::zero();
             for i in 0..self.tree_n {
-                beta_mul_chialpha += self.check_chialpha_buf[i] * self.triple_yz[i];
+                beta_mul_chialpha += self.check_chialpha_buf[i] * self.triple_z[i];
             }
-            let x_star = self.triple_yz[self.tree_n] - beta_mul_chialpha;
+            let x_star = self.triple_z[self.tree_n] - beta_mul_chialpha;
             io.send_stark252(&[x_star]).expect("Cannot send x_star.");
 
             let mut va = FE::zero();
-            va = va - self.triple_yz[self.tree_n];
+            va = va - self.triple_y[self.tree_n];
             for i in 0..self.tree_n {
                 va += self.check_vw_buf[i];
             }
