@@ -47,6 +47,7 @@ fn main() {
 
     // Base sVOLE first
     let mut svole = BaseSvole::new_sender(&mut channel, delta);
+    // mac = key + delta * u
     svole.triple_gen_send(&mut channel, &mut key, t+1);
 
     let mut y = vec![FE::zero(); n];

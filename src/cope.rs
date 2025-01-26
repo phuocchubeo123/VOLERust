@@ -154,6 +154,8 @@ impl Cope {
     }
 
     pub fn extend_sender_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], size: usize) {
+        // Generate ret_recv = ret_send + delta * u_recv
+
         let mut w = vec![vec![FE::zero(); size]; self.m];
         let mut v = vec![vec![FE::zero(); size]; self.m];
 
@@ -211,6 +213,8 @@ impl Cope {
     }
 
     pub fn extend_receiver_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], u: &[FE], size: usize) {
+        // Generate ret_recv = ret_send + delta * u_recv
+
         let mut w0 = vec![vec![FE::zero(); size]; self.m];
         let mut w1 = vec![vec![FE::zero(); size]; self.m];
         let mut tau = vec![vec![FE::zero(); size]; self.m];
@@ -266,7 +270,7 @@ impl Cope {
         }
     }
 
-    /// Consistency check function where `a` has only one `FE`
+    // Debug
     pub fn check_triple<IO: CommunicationChannel>(&mut self, io: &mut IO, a: &[FE], b: &[FE], sz: usize) {
         if self.party == 0 {
             // Sender's role

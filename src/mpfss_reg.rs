@@ -74,6 +74,8 @@ impl MpfssReg {
     }
 
     pub fn mpfss_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], sparse_vector: &mut [FE]) {
+        // triple_y_recv = triple_y_send + delta * triple_z
+
         self.triple_y.copy_from_slice(triple_y);
 
         // Set up PreOT first
@@ -101,6 +103,7 @@ impl MpfssReg {
         // consistency batch check
         if self.is_malicious {
             let x_star = io.receive_stark252(1).expect("Failed to receive x_star")[0];
+            // tmp should be equal to triple_y_recv[self.tree_n] - something
             let tmp = self.secret_share_x * x_star + self.triple_y[self.tree_n];
             let mut vb = FE::zero();
             vb = vb - tmp;
@@ -116,6 +119,8 @@ impl MpfssReg {
     }
 
     pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], triple_z: &[FE], sparse_vector: &mut [FE]) {
+        // triple_y_recv = triple_y_send + delta * triple_z
+
         self.triple_y.copy_from_slice(triple_y);
         self.triple_z.copy_from_slice(triple_z);
 
@@ -129,7 +134,7 @@ impl MpfssReg {
             let mut receiver = SpfssRecverFp::new(self.tree_height);
             self.item_pos_receiver[i] = receiver.get_index();
             receiver.recv(io, ot, i);
-            receiver.compute(&mut self.ggm_tree[i], self.triple_z[i]);
+            receiver.compute(&mut self.ggm_tree[i], self.triple_y[i]);
             sparse_vector[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
 
             if self.is_malicious {

@@ -36,7 +36,7 @@ fn main() {
     // Original COT generation
     const depth: usize = 4;
     let size = depth - 1; // Number of COTs
-    let times = 2;
+    let times = 1;
     // New COT generation using OTPre
     let mut sender_pre_ot = OTPre::new(size, times);
     sender_cot.cot_gen_preot(&mut channel, &mut sender_pre_ot, size*times, None);
@@ -44,6 +44,8 @@ fn main() {
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta = rand_field_element();
     let gamma = rand_field_element();
+
+    channel.send_stark252(&[delta.clone(), gamma.clone()]).expect("Failed to send delta and gamma");
 
     // Initialize Spfss for the sender
     let mut sender_spfss = SpfssSenderFp::new(depth);
@@ -57,4 +59,8 @@ fn main() {
     for ggm in ggm_tree_mem.iter() {
         println!("{:?}", ggm);
     }
+
+    println!("Current: {:?}", gamma - ggm_tree_mem[(1 << (depth - 1)) - 1]);
+
+    sender_spfss.consistency_check(&mut channel, gamma);
 }

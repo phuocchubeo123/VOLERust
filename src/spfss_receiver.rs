@@ -64,15 +64,17 @@ impl SpfssRecverFp {
     /// Compute the GGM tree and reconstruct the nodes.
     pub fn compute(&mut self, ggm_tree_mem: &mut [FE], delta2: FE) {
         self.reconstruct_tree();
-        ggm_tree_mem.copy_from_slice(&self.ggm_tree);
-
         self.ggm_tree[self.choice_pos] = FE::zero();
+
         let mut nodes_sum = FE::zero();
         for i in 0..self.leave_n {
-            nodes_sum += ggm_tree_mem[i];
+            nodes_sum += self.ggm_tree[i];
         }
+
         nodes_sum += self.share;
-        ggm_tree_mem[self.choice_pos] = delta2 - nodes_sum;
+        self.ggm_tree[self.choice_pos] = delta2 - nodes_sum;
+
+        ggm_tree_mem.copy_from_slice(&self.ggm_tree);
     }
 
     /// Reconstruct the GGM tree.
@@ -132,6 +134,8 @@ impl SpfssRecverFp {
 
     /// Consistency check for the protocol.
     pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, z: FE, beta: FE) {
+        // z = y + delta * beta
+
         let hash = Hash::new();
         let digest = hash.hash_32byte_block(&self.share.to_bytes_le());
         let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
@@ -139,11 +143,11 @@ impl SpfssRecverFp {
         uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
 
         // Compute x_star
-        let x_star = chi[self.choice_pos] * beta - z;
+        let x_star = chi[self.choice_pos] * beta - beta;
         // Send x_star
         io.send_stark252(&[x_star]).unwrap();
 
-        // Compute W
+        // receive delta for tes        // Compute W
         let w = vector_inner_product(&chi, &self.ggm_tree) - z;
 
         // Receive V and verify
@@ -157,6 +161,7 @@ impl SpfssRecverFp {
     }
 
     pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, chi_alpha: &mut FE, w: &mut FE, io: &mut IO, beta: FE, seed: FE) {
+        println!("Seed: {:?}", seed);
         let mut chi = vec![FE::zero(); self.leave_n];
 
         let hash = Hash::new();

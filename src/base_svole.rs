@@ -39,6 +39,7 @@ impl BaseSvole {
 
     /// Sender: Triple generation
     pub fn triple_gen_send<IO: CommunicationChannel>(&mut self, io: &mut IO, share: &mut [FE], size: usize) {
+        // Generate share_recv = share_send + delta * u_recv
         self.cope.extend_sender_batch(io, share, size);
         let mut b = vec![FE::zero(); 1];
         self.cope.extend_sender_batch(io, &mut b, 1);
@@ -47,6 +48,7 @@ impl BaseSvole {
 
     /// Receiver: Triple generation
     pub fn triple_gen_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, share: &mut [FE], u: &mut [FE], size: usize) {
+        // Generate share_recv = share_send + delta * u_recv
         let mut prg = PRG::new(None, 0);
         let mut x = vec![FE::zero(); 1];
         prg.random_stark252_elements(&mut x);

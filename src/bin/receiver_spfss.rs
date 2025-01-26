@@ -37,7 +37,7 @@ fn main() {
     // Original COT generation
     const depth: usize = 4;
     let size = depth - 1; // Number of COTs
-    let times = 2;
+    let times = 1;
     let mut choice_bits = vec![false; size*times];
     // Populate random choice bits
     for bit in &mut choice_bits {
@@ -49,7 +49,11 @@ fn main() {
     receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size*times, Some(&choice_bits));
 
     let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
-    let delta2 = rand_field_element();
+    let beta = rand_field_element();
+    let received_data = channel.receive_stark252(2).expect("Failed to receive delta and gamma");
+    let delta = received_data[0];
+    let gamma = received_data[1];
+    let delta2 = gamma + delta * beta;
 
     // Initialize Spfss for the sender
     let mut receiver_spfss = SpfssRecverFp::new(depth);
@@ -63,4 +67,9 @@ fn main() {
     for ggm in ggm_tree_mem.iter() {
         println!("{:?}", ggm);
     }
+
+    println!("Test delta: {:?}", delta);
+    println!("Manual consistency check: {:?}", ggm_tree_mem[(1<<(depth-1))-1] - delta * beta);
+
+    receiver_spfss.consistency_check(&mut channel, delta2, beta);
 }

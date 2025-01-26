@@ -210,7 +210,7 @@ impl IKNP {
             for (i, (prg0, prg1)) in prgs_g0.iter_mut().zip(prgs_g1.iter_mut()).enumerate() {
                 let start = i * BLOCK_SIZE / NUM_BITS;
                 let end = start + local_block_size / NUM_BITS;
-                println!("Start end: {}, {}", start, end);
+                // println!("Start end: {}, {}", start, end);
                 prg0.random_32byte_block(&mut t[start..end]);
                 // println!("PRG: {:?}", t[start]);
                 prg1.random_32byte_block(&mut tmp[start..end]);

@@ -73,14 +73,11 @@ impl SpfssSenderFp {
     /// Generate the GGM tree from the top.
     // Generate the GGM tree to ggm_tree_mem first, then copy it into self.ggm_tree for later check
     fn ggm_tree_gen(&mut self, ggm_tree_mem: &mut [FE], secret: FE, gamma: FE) {
-        println!("The length of ggm_tree_mem is: {}", ggm_tree_mem.len());
         let mut prp = TwoKeyPRP::new();
         // Generate the first layer of the GGM tree
         prp.node_expand_1to2(&mut ggm_tree_mem[0..2], &self.seed);
         self.m0[0] = ggm_tree_mem[0];
         self.m1[0] = ggm_tree_mem[1];
-
-        println!("ggm ggm: {:?}", &ggm_tree_mem[0..2]);
 
         // Process all layers
         for h in 1..self.depth - 1 {
@@ -101,13 +98,15 @@ impl SpfssSenderFp {
         // Compute the secret sum
         self.secret_sum = FE::zero();
         for node in ggm_tree_mem.iter().take(self.leave_n) {
-            self.secret_sum += *node;
+            self.secret_sum = self.secret_sum - *node;
         }
         self.secret_sum += gamma;
     }
 
     /// Consistency check: Protocol PI_spsVOLE
     pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, y: FE) {
+        // z = y + delta * beta
+
         let hash = Hash::new();
         let digest = hash.hash_32byte_block(&self.secret_sum.to_bytes_le());
         let uni_hash_seed = FE::from_bytes_le(&digest).unwrap();
@@ -116,11 +115,14 @@ impl SpfssSenderFp {
 
         // Receive x_star
         let x_star = io.receive_stark252(1).expect("Failed to receive x_star")[0];
+
         // Compute y_star
-        let y_star = y + x_star * self.delta;
+        let y_star = y - x_star * self.delta;
 
         // Compute V
         let v = vector_inner_product(&chi, &self.ggm_tree) - y_star;
+
+        println!("v: {:?}", v);
 
         // Send V
         io.send_stark252(&[v]).expect("Failed to send V");
