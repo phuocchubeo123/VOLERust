@@ -5,6 +5,7 @@ use vole_rust::socket_channel::TcpChannel;
 use vole_rust::base_cot::BaseCot;
 use vole_rust::preot::OTPre;
 use std::net::TcpListener;
+use std::time::Instant;
 
 fn main() {
     // Listen for the sender
@@ -20,7 +21,7 @@ fn main() {
     receiver_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
-    let size = 512; // Number of COTs
+    let size = 1000000; // Number of COTs
     let mut original_ot_data = vec![[0u8; 32]; size];
     let mut choice_bits = vec![false; size];
 
@@ -35,9 +36,13 @@ fn main() {
     let is_original_valid = receiver_cot.check_cot(&mut channel, &original_ot_data, size);
     println!("Original COT validation result: {}", is_original_valid);
 
+    let start = Instant::now();
         // New COT generation using OTPre
     let mut receiver_pre_ot = OTPre::new(size, 1);
     receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size, Some(&choice_bits));
+
+    let duration = start.elapsed();
+    println!("Time taken: {:?}", duration);
 
     // Receive data using OTPre
     let mut received_data = vec![[0u8; 32]; size];

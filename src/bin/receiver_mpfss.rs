@@ -29,8 +29,8 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
-    const log_bin_sz: usize = 5;
-    const t: usize = 3;
+    const log_bin_sz: usize = 4;
+    const t: usize = 100;
     const n: usize = t * (1 << log_bin_sz);
     const k: usize = 2;
 
@@ -51,9 +51,10 @@ fn main() {
     svole.triple_gen_recv(&mut channel, &mut mac, &mut u, t+1);
 
     let mut y = vec![FE::zero(); n];
-    let mut mpfss = MpfssReg::new::<n, t, log_bin_sz>(1);
+    let mut z = vec![FE::zero(); n];
+    let mut mpfss = MpfssReg::new(n, t, log_bin_sz, 1);
     mpfss.set_malicious();
 
     mpfss.receiver_init();
-    mpfss.mpfss_receiver(&mut channel, &mut pre_ot, &mac, &u, &mut y);
+    mpfss.mpfss_receiver(&mut channel, &mut pre_ot, &mac, &u, &mut y, &mut z);
 }

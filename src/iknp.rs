@@ -132,7 +132,7 @@ impl IKNP {
 
     fn send_pre_block<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], length: usize) {
         let local_block_size = (length + NUM_BITS - 1) / NUM_BITS * NUM_BITS;
-        println!("local_block_size: {}", local_block_size);
+        // println!("local_block_size: {}", local_block_size);
 
         let mut t = vec![[0u8; 32]; BLOCK_SIZE];
         let mut res = vec![[0u8; 32]; BLOCK_SIZE];
@@ -141,7 +141,7 @@ impl IKNP {
         // println!("Received tmp: {:?}", &tmp[..5]);
 
         if let Some(prgs) = &mut self.g0 {
-            println!("The number of keys is: {}", prgs.len());
+            // println!("The number of keys is: {}", prgs.len());
             for (i, prg) in prgs.iter_mut().enumerate() {
                 let start = i * BLOCK_SIZE / NUM_BITS;
                 let end = start + local_block_size / NUM_BITS;
@@ -276,7 +276,7 @@ impl IKNP {
         if remain != 0 {
             println!("There is remain in check!");
             chi_prg.random_32byte_block(&mut chi);
-            vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[length - remain..]);
+            vector_inn_prdt_sum_no_red(&mut tmp, &chi[..remain], &out[length - remain..]);
             xor_blocks(&mut q, &tmp);
         }
 
@@ -347,7 +347,7 @@ impl IKNP {
         let remain = length % BLOCK_SIZE;
         if remain != 0 {
             chi_prg.random_32byte_block(&mut chi);
-            vector_inn_prdt_sum_no_red(&mut tmp, &chi, &out[length - remain..]);
+            vector_inn_prdt_sum_no_red(&mut tmp, &chi[..remain], &out[length - remain..]);
             xor_blocks(&mut t, &tmp);
 
             for j in 0..remain {
@@ -589,8 +589,8 @@ fn xor_blocks_arr(res: &mut [[u8; 32]], x: &[[u8; 32]], y: &[[u8; 32]]) {
 
 
 fn transpose(out: &mut [[u8; 32]], t: &[[u8; 32]], num_bits: usize, block_size: usize) {
-    println!("Size of out is: {} x {}", out.len(), out[0].len() * 8);
-    println!("Size of t is: {} x {}", t.len(), t[0].len() * 8);
+    // println!("Size of out is: {} x {}", out.len(), out[0].len() * 8);
+    // println!("Size of t is: {} x {}", t.len(), t[0].len() * 8);
     for row in 0..num_bits {
         for col in 0..block_size {
             let idx = row * block_size + col;

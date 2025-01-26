@@ -18,7 +18,7 @@ fn main() {
     sender_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
-    let size = 512; // Number of COTs
+    let size = 1000000; // Number of COTs
     let mut original_ot_data = vec![[0u8; 32]; size];
     sender_cot.cot_gen(&mut channel, &mut original_ot_data, size, None);
 

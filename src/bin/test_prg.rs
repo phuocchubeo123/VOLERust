@@ -13,7 +13,7 @@ use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-const NUM_BLOCKS: usize = 1 << 18; // 2^18 blocks
+const NUM_BLOCKS: usize = 10_000_000; // 2^18 blocks
 
 fn main() {
     // Initialize AES key
@@ -55,4 +55,15 @@ fn main() {
     } else {
         println!("Mismatch between sequential and parallel encryption results.");
     }
+
+    let mut new_blocks = vec![[0u8; 16]; NUM_BLOCKS];
+    let mut prg = PRG::new(None, 0);
+
+    let start = Instant::now();
+    prg.random_block(&mut new_blocks);
+    let duration_parallel = start.elapsed();
+    println!(
+        "Time to encrypt {} blocks with random_block: {:?}",
+        NUM_BLOCKS, duration_parallel
+    );
 }

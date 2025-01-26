@@ -12,6 +12,7 @@ use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use std::net::TcpStream;
 use rand::random;
+use std::time::Instant;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -52,8 +53,13 @@ fn main() {
 
     sender_pre_ot.choices_sender(&mut channel);
 
+    let start = Instant::now();
+
     sender_spfss.compute(&mut ggm_tree_mem, delta, gamma);
     sender_spfss.send(&mut channel, &mut sender_pre_ot, 0);
+
+    let duration = start.elapsed();
+    println!("Time taken for one mpfss: {:?}", duration);
 
     println!("GGM tree:");
     for ggm in ggm_tree_mem.iter() {

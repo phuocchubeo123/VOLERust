@@ -160,8 +160,8 @@ impl SpfssRecverFp {
         }
     }
 
-    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, chi_alpha: &mut FE, w: &mut FE, io: &mut IO, beta: FE, seed: FE) {
-        println!("Seed: {:?}", seed);
+    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, chi_alpha: &mut FE, w: &mut FE, io: &mut IO, seed: FE) {
+        // println!("Seed: {:?}", seed);
         let mut chi = vec![FE::zero(); self.leave_n];
 
         let hash = Hash::new();
@@ -172,9 +172,6 @@ impl SpfssRecverFp {
 
         *chi_alpha = chi[self.choice_pos];
         *w = vector_inner_product(&chi, &self.ggm_tree);
-
-        // No idea
-        self.ggm_tree[self.choice_pos] += beta;
     }
 }
 

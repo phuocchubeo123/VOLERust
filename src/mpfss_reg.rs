@@ -32,9 +32,9 @@ pub struct MpfssReg {
 }
 
 impl MpfssReg {
-    pub fn new<const n: usize, const t: usize, const log_bin_sz: usize>(party: usize) -> Self {
+    pub fn new(n: usize, t: usize, log_bin_sz: usize, party: usize) -> Self {
         // make sure n = t * leave_n
-        Self {
+        MpfssReg {
             party: party,
             item_n: t,
             idx_max: n,
@@ -76,7 +76,7 @@ impl MpfssReg {
     pub fn mpfss_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], sparse_vector: &mut [FE]) {
         // triple_y_recv = triple_y_send + delta * triple_z
 
-        self.triple_y.copy_from_slice(triple_y);
+        self.triple_y.copy_from_slice(&triple_y[..self.tree_n+1]);
 
         // Set up PreOT first
         for i in 0..self.tree_n {
@@ -118,11 +118,11 @@ impl MpfssReg {
         }
     }
 
-    pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], triple_z: &[FE], sparse_vector: &mut [FE]) {
+    pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], triple_z: &[FE], sparse_vector_y: &mut [FE], sparse_vector_z: &mut [FE]) {
         // triple_y_recv = triple_y_send + delta * triple_z
 
-        self.triple_y.copy_from_slice(triple_y);
-        self.triple_z.copy_from_slice(triple_z);
+        self.triple_y.copy_from_slice(&triple_y[..self.tree_n+1]);
+        self.triple_z.copy_from_slice(&triple_z[..self.tree_n+1]);
 
         for i in 0..self.tree_n {
             let b = vec![false; self.tree_height - 1];
@@ -135,12 +135,16 @@ impl MpfssReg {
             self.item_pos_receiver[i] = receiver.get_index();
             receiver.recv(io, ot, i);
             receiver.compute(&mut self.ggm_tree[i], self.triple_y[i]);
-            sparse_vector[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
+            sparse_vector_y[i*self.leave_n..(i+1)*self.leave_n].copy_from_slice(&self.ggm_tree[i]);
+            for j in i*self.leave_n..(i+1)*self.leave_n {
+                sparse_vector_z[j] = FE::zero();
+            }
+            sparse_vector_z[i*self.leave_n + self.item_pos_receiver[i]] = self.triple_z[i];
 
             if self.is_malicious {
                 let mut seed = vec![FE::zero(); 1];
                 self.seed_expand(io, &mut seed, 1);
-                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, self.triple_z[i], seed[0]);
+                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, seed[0]);
             }
         }
 

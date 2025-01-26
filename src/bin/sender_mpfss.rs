@@ -14,6 +14,7 @@ use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use std::net::TcpStream;
 use rand::random;
+use std::time::Instant;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -28,8 +29,8 @@ fn main() {
     let stream = TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to receiver");
     let mut channel = TcpChannel::new(stream);
 
-    const log_bin_sz: usize = 5;
-    const t: usize = 3;
+    const log_bin_sz: usize = 4;
+    const t: usize = 100;
     const n: usize = t * (1 << log_bin_sz);
     const k: usize = 2;
 
@@ -51,9 +52,13 @@ fn main() {
     svole.triple_gen_send(&mut channel, &mut key, t+1);
 
     let mut y = vec![FE::zero(); n];
-    let mut mpfss = MpfssReg::new::<n, t, log_bin_sz>(0);
+    let mut mpfss = MpfssReg::new(n, t, log_bin_sz, 0);
     mpfss.set_malicious();
 
     mpfss.sender_init(delta);
+
+    let start = Instant::now();
     mpfss.mpfss_sender(&mut channel, &mut pre_ot, &key, &mut y);
+    let duration = start.elapsed();
+    println!("Time taken to generate {} Spfss: {:?}", t, duration);
 }

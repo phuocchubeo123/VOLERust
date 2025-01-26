@@ -4,7 +4,7 @@ use crate::comm_channel::CommunicationChannel;
 use crate::preot::OTPre;
 
 pub struct BaseCot {
-    party: u8, // Alice: 0, Bob: 1
+    party: usize, // Alice: 0, Bob: 1
     one: [u8; 32],
     minus_one: [u8; 32],
     ot_delta: Option<[u8; 32]>,
@@ -13,7 +13,7 @@ pub struct BaseCot {
 }
 
 impl BaseCot {
-    pub fn new(party: u8, malicious: bool) -> Self {
+    pub fn new(party: usize, malicious: bool) -> Self {
         let one = [
             1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
