@@ -7,6 +7,7 @@ use crate::base_svole::BaseSvole;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
+use std::time::Instant;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -106,6 +107,22 @@ pub const FP_DEFAULT: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     log_bin_sz_pre0: 4,
 };
 
+// Wolverine instance
+pub const WOLVERINE_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+    n: 10168320,
+    t: 4965,
+    k: 158000,
+    log_bin_sz: 11,
+    n_pre: 642048,
+    t_pre: 2508,
+    k_pre: 19870,
+    log_bin_sz_pre: 8,
+    n_pre0: 22400,
+    t_pre0: 700,
+    k_pre0: 2000,
+    log_bin_sz_pre0: 5,
+};
+
 
 pub struct VoleTriple {
     party: usize,
@@ -168,18 +185,30 @@ impl VoleTriple {
     pub fn extend_send<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, key: &[FE], t: usize) {
         mpfss.sender_init(self.delta);
         mpfss.mpfss_sender(io, pre_ot, key, y);
+
+        // println!("Test mpfss: {:?}", y[0] + key[t+1] * self.delta);
+
         // // y is already a regular vector (concat of n/t unit vectors), which corresponses to the noise in LPN
+
+        let start = Instant::now();
         lpn.compute_send(y, &key[t+1..]);
+        println!("Time taken for LPN: {:?}", start.elapsed());
     }
 
     pub fn extend_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, mac: &[FE], u: &[FE], t: usize) {
         mpfss.receiver_init();
         mpfss.mpfss_receiver(io, pre_ot, mac, u, y, z);
+
+        // println!("Test mpfss: {:?}", (y[0] + mac[t+1] * self.delta) - (z[0] + u[t+1] * self.delta) * self.delta);
+
+        let start = Instant::now();
         lpn.compute_recv(y, z, &mac[t+1..], &u[t+1..]);
+        println!("Time taken for LPN: {:?}", start.elapsed());
     }
 
     pub fn setup_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE) {
         self.delta = delta;
+        // io.send_stark252(&[self.delta]).expect("Cannot send test delta"); //debug only
 
         let seed_pre0 = [0u8; 16];
         let seed_field_pre0 = [[0u8; 16]; 4];
@@ -197,11 +226,14 @@ impl VoleTriple {
         let mut svole0 = BaseSvole::new_sender(io, self.delta);
         svole0.triple_gen_send(io, &mut key, triple_n0);
 
+        // println!("Test base svole: {:?}", key[0]);
+
         io.flush();
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
         self.extend_send(io, &mut pre_y0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &key, self.param.t_pre0);
 
+        // println!("Test LPN: {:?}", pre_y0[0]);
 
         let seed_pre = [0u8; 16];
         let seed_field_pre = [[0u8; 16]; 4];
@@ -223,6 +255,8 @@ impl VoleTriple {
     }
 
     pub fn setup_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+        // self.delta = io.receive_stark252(1).expect("Failed to receive test delta")[0]; //debug only
+
         let seed_pre0 = [0u8; 16];
         let seed_field_pre0 = [[0u8; 16]; 4];
         let mut lpn_pre0 = Lpn::new(self.param.k_pre0, self.param.n_pre0, &seed_pre0, &seed_field_pre0);
@@ -240,11 +274,15 @@ impl VoleTriple {
         let mut svole0 = BaseSvole::new_receiver(io);
         svole0.triple_gen_recv(io, &mut mac, &mut u, triple_n0);
 
+        // println!("Test base svole: {:?}", mac[0] - u[0] * self.delta);
+
         io.flush();
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
         let mut pre_z0 = vec![FE::zero(); self.param.n_pre0];
         self.extend_recv(io, &mut pre_y0, &mut pre_z0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &mac, &u, self.param.t_pre0);
+
+        // println!("Test lpn: {:?}", pre_y0[0] - pre_z0[0] * self.delta);
 
         let seed_pre = [0u8; 16];
         let seed_field_pre = [[0u8; 16]; 4];
@@ -266,4 +304,12 @@ impl VoleTriple {
 
         self.pre_ot_inplace = true;
     }
+
+    pub fn extend_initialization(&mut self) {
+
+    }
+
+    pub fn extend(&mut self, data_y: &[FE], data_z: &[FE], num: usize) {
+
+    }        
 }

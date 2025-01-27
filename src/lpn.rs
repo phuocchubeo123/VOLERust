@@ -59,19 +59,13 @@ impl Lpn {
                 .collect();
             field_prp.permute_block(&mut tmp_field, 10);
 
-            // if i < 5 {
-            //     println!("r: {:?}", r);
-            //     println!("tmp_field: {:?}", tmp_field);
-            // }
-
-            self.K[i] = FE::zero();
             for m in 0..10 {
                 self.K[i] += tmp_field[m] * self.preK[r[m]];
             }
         }
     }
 
-    pub fn compute_M(&mut self) {
+    pub fn compute_K_and_M(&mut self) {
         let prp = PRP::new(Some(&self.seed));
         let field_prp = LubyRackoffPRP::new(Some(&self.seed_field));
         for i in 0..self.n {
@@ -97,16 +91,9 @@ impl Lpn {
                 .collect();
             field_prp.permute_block(&mut tmp_field, 10);
 
-            // if i < 5 {
-            //     println!("r: {:?}", r);
-            //     println!("tmp_field: {:?}", tmp_field);
-            // }
-
-            // Initialize M[i] to zero
-            self.M[i] = FE::zero();
-
             for m in 0..10 {
-                self.M[i] += self.preK[r[m]];
+                self.K[i] += tmp_field[m] * self.preK[r[m]];
+                self.M[i] += tmp_field[m] * self.preM[r[m]];
             }
         }
     }
@@ -123,12 +110,10 @@ impl Lpn {
         self.party = 1;
         self.K.copy_from_slice(K);
         self.preK.copy_from_slice(kkK);
-        self.compute_K();
-        K.copy_from_slice(&self.K);
-
         self.M.copy_from_slice(M);
         self.preM.copy_from_slice(kkM);
-        self.compute_M();
+        self.compute_K_and_M();
+        K.copy_from_slice(&self.K);
         M.copy_from_slice(&self.M);
     }
 }

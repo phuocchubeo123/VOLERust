@@ -74,42 +74,37 @@ impl LubyRackoffPRP {
             .iter()
             .map(|x| x.to_bytes_le())
             .collect();
-        let mut data_left: Vec<[u8; 16]> = data_bytes
+        let mut data_left: Vec<_> = data_bytes
             .iter()
             .map(|x| {
                 let mut block = [0u8; 16];
                 block.copy_from_slice(&x[0..16]);
-                block
+                GenericArray::clone_from_slice(&block)
             })
             .collect();
-        let mut data_right : Vec<[u8; 16]> = data_bytes
+        let mut data_right : Vec<_> = data_bytes
             .iter()
             .map(|x| {
                 let mut block = [0u8; 16];
                 block.copy_from_slice(&x[16..32]);
-                block
+                GenericArray::clone_from_slice(&block)
+            })
+            .collect();
+        let mut tmp: Vec<_> = data_bytes
+            .iter()
+            .map(|x| {
+                let mut block = [0u8; 16];
+                block.copy_from_slice(&x[16..32]);
+                GenericArray::clone_from_slice(&block)
             })
             .collect();
         
         for i in 0..NUM_ROUNDS {
-            let mut aes_block: Vec<_> = data_left
-                .iter()
-                .map(|x| GenericArray::clone_from_slice(x))
-                .collect();
-            let aes = Aes128::new(GenericArray::from_slice(&self.keys[i]));
-            aes.encrypt_blocks(&mut aes_block);
-
+            tmp.copy_from_slice(&data_left);
             data_left.copy_from_slice(&data_right);
-            data_right = aes_block
-                .iter()
-                .map(|x| {
-                    let mut block = [0u8; 16];
-                    block.copy_from_slice(&x);
-                    block
-                })
-                .collect();
-            // xoring data_right (encrypted data_left) with data_left (former data_right)
-            xor_block_array(&mut data_right, &data_left);
+            let aes = Aes128::new(GenericArray::from_slice(&self.keys[i]));
+            aes.encrypt_blocks(&mut data_right);
+            data_right ^= tmp;
         }
 
         for (i, element) in data.iter_mut().enumerate() {

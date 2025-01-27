@@ -3,7 +3,7 @@ extern crate lambdaworks_math;
 extern crate rand;
 
 use vole_rust::socket_channel::TcpChannel;
-use vole_rust::vole_triple::{FP_DEFAULT, VoleTriple};
+use vole_rust::vole_triple::{FP_DEFAULT, VoleTriple, WOLVERINE_LPN};
 use std::net::TcpStream;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
@@ -24,7 +24,7 @@ fn main() {
     let stream = TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to receiver");
     let mut channel = TcpChannel::new(stream);
 
-    let mut vole = VoleTriple::new(0, false, &mut channel, FP_DEFAULT);
+    let mut vole = VoleTriple::new(0, false, &mut channel, WOLVERINE_LPN);
 
     let delta = rand_field_element();
     vole.setup_sender(&mut channel, delta);
