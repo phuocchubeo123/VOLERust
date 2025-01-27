@@ -109,10 +109,10 @@ pub const FP_DEFAULT: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
 
 // Wolverine instance
 pub const WOLVERINE_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 10168320,
-    t: 4965,
-    k: 158000,
-    log_bin_sz: 11,
+    n: 10805248,
+    t: 1319,
+    k: 589760,
+    log_bin_sz: 13,
     n_pre: 642048,
     t_pre: 2508,
     k_pre: 19870,
@@ -123,6 +123,21 @@ pub const WOLVERINE_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     log_bin_sz_pre0: 5,
 };
 
+// Phuoc test instance
+pub const PHUOC_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+    n: 675328,
+    t: 1319,
+    k: 589760,
+    log_bin_sz: 9,
+    n_pre: 642048,
+    t_pre: 2508,
+    k_pre: 19870,
+    log_bin_sz_pre: 8,
+    n_pre0: 22400,
+    t_pre0: 700,
+    k_pre0: 2000,
+    log_bin_sz_pre0: 5,
+};
 
 pub struct VoleTriple {
     party: usize,
@@ -185,6 +200,7 @@ impl VoleTriple {
     pub fn extend_send<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, key: &[FE], t: usize) {
         mpfss.sender_init(self.delta);
         mpfss.mpfss_sender(io, pre_ot, key, y);
+        pre_ot.reset();
 
         // println!("Test mpfss: {:?}", y[0] + key[t+1] * self.delta);
 
@@ -198,6 +214,7 @@ impl VoleTriple {
     pub fn extend_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, mac: &[FE], u: &[FE], t: usize) {
         mpfss.receiver_init();
         mpfss.mpfss_receiver(io, pre_ot, mac, u, y, z);
+        pre_ot.reset();
 
         // println!("Test mpfss: {:?}", (y[0] + mac[t+1] * self.delta) - (z[0] + u[t+1] * self.delta) * self.delta);
 
@@ -211,7 +228,9 @@ impl VoleTriple {
         // io.send_stark252(&[self.delta]).expect("Cannot send test delta"); //debug only
 
         let seed_pre0 = [0u8; 16];
-        let seed_field_pre0 = [[0u8; 16]; 4];
+        // let seed_field_pre0 = [[0u8; 16]; 4];
+        let mut seed_field_pre0 = [0u8; 32];
+        seed_field_pre0[0] = 1;
         let mut lpn_pre0 = Lpn::new(self.param.k_pre0, self.param.n_pre0, &seed_pre0, &seed_field_pre0);
         let mut mpfss_pre0 = MpfssReg::new(self.param.n_pre0, self.param.t_pre0, self.param.log_bin_sz_pre0, self.party);
         mpfss_pre0.set_malicious();
@@ -236,7 +255,9 @@ impl VoleTriple {
         // println!("Test LPN: {:?}", pre_y0[0]);
 
         let seed_pre = [0u8; 16];
-        let seed_field_pre = [[0u8; 16]; 4];
+        // let seed_field_pre = [[0u8; 16]; 4];
+        let mut seed_field_pre = [0u8; 32];
+        seed_field_pre[0] = 1;
         let mut lpn_pre = Lpn::new(self.param.k_pre, self.param.n_pre, &seed_pre, &seed_field_pre);
         let mut mpfss_pre = MpfssReg::new(self.param.n_pre, self.param.t_pre, self.param.log_bin_sz_pre, self.party); 
         mpfss_pre.set_malicious();
@@ -258,7 +279,9 @@ impl VoleTriple {
         // self.delta = io.receive_stark252(1).expect("Failed to receive test delta")[0]; //debug only
 
         let seed_pre0 = [0u8; 16];
-        let seed_field_pre0 = [[0u8; 16]; 4];
+        // let seed_field_pre0 = [[0u8; 16]; 4];
+        let mut seed_field_pre0 = [0u8; 32];
+        seed_field_pre0[0] = 1;
         let mut lpn_pre0 = Lpn::new(self.param.k_pre0, self.param.n_pre0, &seed_pre0, &seed_field_pre0);
         let mut mpfss_pre0 = MpfssReg::new(self.param.n_pre0, self.param.t_pre0, self.param.log_bin_sz_pre0, self.party);
         mpfss_pre0.set_malicious();
@@ -285,7 +308,9 @@ impl VoleTriple {
         // println!("Test lpn: {:?}", pre_y0[0] - pre_z0[0] * self.delta);
 
         let seed_pre = [0u8; 16];
-        let seed_field_pre = [[0u8; 16]; 4];
+        // let seed_field_pre = [[0u8; 16]; 4];
+        let mut seed_field_pre = [0u8; 32];
+        seed_field_pre[0] = 1;
         let mut lpn_pre = Lpn::new(self.param.k_pre, self.param.n_pre, &seed_pre, &seed_field_pre);
         let mut mpfss_pre = MpfssReg::new(self.param.n_pre, self.param.t_pre, self.param.log_bin_sz_pre, self.party); 
         mpfss_pre.set_malicious();
@@ -306,10 +331,154 @@ impl VoleTriple {
     }
 
     pub fn extend_initialization(&mut self) {
-
+        self.m = self.param.k + self.param.t + 1;
+        self.ot_limit = self.param.n - self.m;
+        self.ot_used = self.ot_limit;
+        self.extend_initialized = true;
     }
 
-    pub fn extend(&mut self, data_y: &[FE], data_z: &[FE], num: usize) {
+    pub fn extend_once<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn) {
+        self.cot.cot_gen_preot(io, pre_ot, self.param.t * self.param.log_bin_sz, None);
+        let mut pre_y = vec![FE::zero(); self.m];
+        pre_y.copy_from_slice(&self.pre_y[..self.m]);
+        let mut pre_z = vec![FE::zero(); self.m];
+        pre_z.copy_from_slice(&self.pre_z[..self.m]);
+        if self.party == 0{
+            self.extend_send(io, data_y, mpfss, pre_ot, lpn, &pre_y, self.param.t);
+        } else {
+            self.extend_recv(io, data_y, data_z, mpfss, pre_ot, lpn, &pre_y, &pre_z, self.param.t);
+        }
+        self.pre_y[..self.m].copy_from_slice(&data_y[self.ot_limit..]);
+        self.pre_z[..self.m].copy_from_slice(&data_z[self.ot_limit..]);
+    }
 
+    pub fn extend<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], num: usize) {
+        if self.extend_initialized == false {
+            panic!("Run extend_initialization first!");
+        }
+
+        if num <= self.silent_ot_left() {
+            data_y.copy_from_slice(&self.vole_y[self.ot_used..self.ot_used+num]);
+            data_z.copy_from_slice(&self.vole_z[self.ot_used..self.ot_used+num]);
+            return;
+        }
+
+        let gened = self.silent_ot_left();
+        let mut copied = 0;
+        if gened > 0 {
+            data_y.copy_from_slice(&self.vole_y[self.ot_used..self.ot_used+gened]);
+            data_z.copy_from_slice(&self.vole_z[self.ot_used..self.ot_used+gened]);
+            copied += gened;
+        }
+
+        println!("gened: {}", gened);
+
+        self.m = self.param.k + self.param.t + 1;
+        println!("m: {}", self.m);
+        let mut round_inplace = 0;
+        if num > gened + self.m {
+            round_inplace = (num - gened - self.m) / self.ot_limit;
+        }
+        let mut last_round_ot = num - gened - round_inplace * self.ot_limit; // m + something
+        let round_memcpy = (last_round_ot > self.ot_limit) as bool;
+        if round_memcpy {
+            last_round_ot -= self.ot_limit;
+        }
+
+        println!("round inplace: {}", round_inplace);
+
+        let mut pre_ot = OTPre::new(self.param.log_bin_sz, self.param.t);
+        let seed = [0u8; 16];
+        let mut seed_field = [0u8; 32];
+        seed_field[0] = 1;
+        let mut lpn = Lpn::new(self.param.k, self.param.n, &seed, &seed_field);
+        let mut mpfss = MpfssReg::new(self.param.n, self.param.t, self.param.log_bin_sz, self.party); 
+        mpfss.set_malicious();
+
+        for i in 0..round_inplace {
+            self.extend_once(io, &mut data_y[copied..copied+self.param.n], &mut data_z[copied..copied+self.param.n], &mut mpfss, &mut pre_ot, &mut lpn);
+            self.ot_used = self.ot_limit;
+            copied += self.param.n;
+        }
+
+        if round_memcpy {
+            let mut tmp_y = vec![FE::zero(); self.param.n];
+            let mut tmp_z = vec![FE::zero(); self.param.n];
+            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn);
+            self.vole_y.copy_from_slice(&tmp_y);
+            self.vole_z.copy_from_slice(&tmp_z);
+            data_y[copied..copied+self.param.n].copy_from_slice(&tmp_y);
+            data_z[copied..copied+self.param.n].copy_from_slice(&tmp_z);
+            self.ot_used = self.ot_limit;
+            copied += self.param.n;
+        }
+
+        if last_round_ot > 0 {
+            let mut tmp_y = vec![FE::zero(); self.param.n];
+            let mut tmp_z = vec![FE::zero(); self.param.n];
+            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn);
+            self.vole_y.copy_from_slice(&tmp_y);
+            self.vole_z.copy_from_slice(&tmp_z);
+            data_y[copied..].copy_from_slice(&tmp_y[..last_round_ot]);
+            data_z[copied..].copy_from_slice(&tmp_z[..last_round_ot]);
+            self.ot_used = last_round_ot;
+        }
     }        
+
+    pub fn extend_inplace<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], byte_space: usize) {
+        if byte_space < self.param.n {
+            panic!("Not enough space");
+        }
+        if self.extend_initialized == false {
+            panic!("Run extend_initialization first!");
+        }
+
+        let tp_output_n = byte_space - self.m;
+        if tp_output_n % self.ot_limit != 0 {
+            panic!("call byte_memory_need_inplace to know the byte_space needed");
+        }
+
+        let round = tp_output_n / self.ot_limit;
+        let mut copied = 0;
+
+        let mut pre_ot = OTPre::new(self.param.log_bin_sz, self.param.t);
+        let seed = [0u8; 16];
+        let mut seed_field = [0u8; 32];
+        seed_field[0] = 1;
+        let mut lpn = Lpn::new(self.param.k, self.param.n, &seed, &seed_field);
+        let mut mpfss = MpfssReg::new(self.param.n, self.param.t, self.param.log_bin_sz, self.party); 
+        mpfss.set_malicious();
+
+        for i in 0..round {
+            self.extend_once(io, &mut data_y[copied..copied+self.param.n], &mut data_z[copied..copied+self.param.n], &mut mpfss, &mut pre_ot, &mut lpn);
+            self.ot_used = self.ot_limit;
+            copied += self.param.n;
+        }
+    }
+
+    pub fn byte_memory_need_inplace(&self, tp_need: usize) -> usize {
+        let round = (tp_need - 1) / self.ot_limit;
+        round * self.ot_limit + self.param.n
+    }
+
+    pub fn silent_ot_left(&self) -> usize {
+        self.ot_limit - self.ot_used
+    }
+
+    // debug only
+    pub fn check_triple<IO: CommunicationChannel>(&self, io: &mut IO, x: FE, y: &[FE], z: &[FE], size: usize) {
+        if self.party == 0 {
+            io.send_stark252(&[x]).expect("Failed to send delta test.");
+            io.send_stark252(&y).expect("Failed to send k test.");
+        } else {
+            // want y = k + delta * z
+            let delta = io.receive_stark252(1).expect("Failed to receive delta test.")[0];
+            let k = io.receive_stark252(size).expect("Failed to receive k test");
+            for i in 0..size {
+                if y[i] != k[i] + delta * z[i] {
+                    panic!("tripple error at index {}", i);
+                }
+            }
+        }
+    }
 }

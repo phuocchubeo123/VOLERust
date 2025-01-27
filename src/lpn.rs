@@ -1,4 +1,4 @@
-use crate::prp::{PRP, LubyRackoffPRP};
+use crate::prp::{PRP, LubyRackoffPRP, FieldPRP};
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
@@ -11,7 +11,7 @@ pub struct Lpn {
     k: usize, 
     n: usize,
     seed: [u8; 16],
-    seed_field: Vec<[u8; 16]>,
+    seed_field: [u8; 32],
     M: Vec<FE>,
     preM: Vec<FE>,
     // prex: Vec<FE>,
@@ -20,13 +20,13 @@ pub struct Lpn {
 }
 
 impl Lpn {
-    pub fn new(k: usize, n: usize, seed: &[u8; 16], seed_field: &[[u8; 16]]) -> Self {
+    pub fn new(k: usize, n: usize, seed: &[u8; 16], seed_field: &[u8; 32]) -> Self {
         Self {
             party: 0,
             k: k,
             n: n,
             seed: *seed,
-            seed_field: (*seed_field).to_vec(),
+            seed_field: *seed_field,
             M: vec![FE::zero(); n],
             preM: vec![FE::zero(); k],
             K: vec![FE::zero(); n],
@@ -36,7 +36,8 @@ impl Lpn {
 
     pub fn compute_K(&mut self) {
         let prp = PRP::new(Some(&self.seed));
-        let field_prp = LubyRackoffPRP::new(Some(&self.seed_field));
+        // let field_prp = LubyRackoffPRP::new(Some(&self.seed_field));
+        let field_prp = FieldPRP::new(Some(&self.seed_field));
         for i in 0..self.n {
             let mut tmp = vec![[0u8; 16]; 10];
             let mut tmp2 = vec![[0u8; 32]; 10];
@@ -67,7 +68,8 @@ impl Lpn {
 
     pub fn compute_K_and_M(&mut self) {
         let prp = PRP::new(Some(&self.seed));
-        let field_prp = LubyRackoffPRP::new(Some(&self.seed_field));
+        // let field_prp = LubyRackoffPRP::new(Some(&self.seed_field));
+        let field_prp = FieldPRP::new(Some(&self.seed_field));
         for i in 0..self.n {
             let mut tmp = vec![[0u8; 16]; 10];
             let mut tmp2 = vec![[0u8; 32]; 10];

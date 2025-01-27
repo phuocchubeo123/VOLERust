@@ -1,4 +1,4 @@
-#![allow(non_snake_case)]
+#![allow(warnings)]
 
 extern crate lambdaworks_math;
 extern crate rand;

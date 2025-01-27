@@ -1,9 +1,15 @@
 extern crate vole_rust;
+extern crate lambdaworks_math;
 
 use vole_rust::socket_channel::TcpChannel;
-use vole_rust::vole_triple::{FP_DEFAULT, VoleTriple, WOLVERINE_LPN};
+use vole_rust::vole_triple::{VoleTriple, PHUOC_LPN};
 use std::net::TcpListener;
 use std::time::Instant;
+use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::field::element::FieldElement;
+
+pub type F = Stark252PrimeField;
+pub type FE = FieldElement<F>;
 
 fn main() {
     // Listen for the sender
@@ -11,9 +17,18 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
-    let mut vole = VoleTriple::new(1, false, &mut channel, WOLVERINE_LPN);
+    let mut vole = VoleTriple::new(1, false, &mut channel, PHUOC_LPN);
     
     let start = Instant::now();
     vole.setup_receiver(&mut channel);
     println!("Time taken for setup: {:?}", start.elapsed());
+
+    vole.extend_initialization();
+
+    const size: usize = 1000;
+    let mut y = [FE::zero(); size];
+    let mut z = [FE::zero(); size];
+    let start = Instant::now();
+    vole.extend(&mut channel, &mut y, &mut z, size);
+    println!("Time taken for one extend: {:?}", start.elapsed());
 }
