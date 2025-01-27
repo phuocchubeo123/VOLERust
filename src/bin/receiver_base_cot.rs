@@ -21,37 +21,26 @@ fn main() {
     receiver_cot.cot_gen_pre(&mut channel, None);
 
     // Original COT generation
-    let size = 1000000; // Number of COTs
+    let size = 60; // Number of COTs
+    let times = 100;
     let mut original_ot_data = vec![[0u8; 32]; size];
     let mut choice_bits = vec![false; size];
 
-    // Populate random choice bits
-    for bit in &mut choice_bits {
-        *bit = rand::random();
-    }
-
-    receiver_cot.cot_gen(&mut channel, &mut original_ot_data, size, Some(&choice_bits));
-
-    // Check correctness of the original COT data
-    let is_original_valid = receiver_cot.check_cot(&mut channel, &original_ot_data, size);
-    println!("Original COT validation result: {}", is_original_valid);
+    let mut receiver_pre_ot = OTPre::new(size, times);
+    receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size * times, None);
 
     let start = Instant::now();
-        // New COT generation using OTPre
-    let mut receiver_pre_ot = OTPre::new(size, 1);
-    receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size, Some(&choice_bits));
-
+    for s in 0..times {
+        receiver_pre_ot.choices_recver(&mut channel, &choice_bits);
+    }
+    channel.flush();
+    receiver_pre_ot.reset();
+    // Receive data using OTPre
+    for s in 0..times {
+        let mut received_data = vec![[0u8; 32]; size];
+        receiver_pre_ot.recv(&mut channel, &mut received_data, &choice_bits, size, s);
+    }
     let duration = start.elapsed();
     println!("Time taken: {:?}", duration);
 
-    // Receive data using OTPre
-    let mut received_data = vec![[0u8; 32]; size];
-    receiver_pre_ot.recv(&mut channel, &mut received_data, &choice_bits, size, 0);
-
-    println!("Choice bits: {:?}", &choice_bits[..5]);
-
-    println!("Receiver received data using OTPre::recv:");
-    for (i, block) in received_data.iter().enumerate().take(5) {
-        println!("Received Block {}: {:?}", i, block);
-    }
 }

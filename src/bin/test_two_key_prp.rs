@@ -1,3 +1,5 @@
+// Running 1 million expand_1to2: 250 ms
+
 extern crate vole_rust;
 extern crate aes;
 extern crate lambdaworks_math;
@@ -13,16 +15,7 @@ use std::time::Instant;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-fn test_node_expand_1to2() {
-    let prp = TwoKeyPRP {};
-    let parent = FE::from(12345u64); // Example parent field element
-    let mut children = [FE::zero(), FE::zero()];
-
-    prp.node_expand_1to2(&mut children, &parent);
-
-    println!("Parent: {}", parent);
-    println!("Child 1: {}", children[0]);
-    println!("Child 2: {}", children[1]);
+fn benchmark_node_expand_2to4() {
 }
 
 fn benchmark_node_expand_1to2() {
@@ -41,6 +34,5 @@ fn benchmark_node_expand_1to2() {
 }
 
 fn main() {
-    test_node_expand_1to2();
     benchmark_node_expand_1to2();
 }

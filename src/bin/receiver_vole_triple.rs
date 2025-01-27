@@ -1,6 +1,5 @@
 extern crate vole_rust;
 
-use vole_rust::comm_channel::CommunicationChannel;
 use vole_rust::socket_channel::TcpChannel;
 use vole_rust::vole_triple::{FP_DEFAULT, VoleTriple};
 use std::net::TcpListener;
@@ -11,6 +10,6 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
-    let mut vole = VoleTriple::new(1, true, &mut channel, FP_DEFAULT);
+    let mut vole = VoleTriple::new(1, false, &mut channel, FP_DEFAULT);
     vole.setup_receiver(&mut channel);
 }

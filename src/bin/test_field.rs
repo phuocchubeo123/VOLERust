@@ -1,3 +1,7 @@
+// takes 2ms to run 100_000 to_bytes_le()
+// take 500ns to run 100_000 plus
+// take 500ns to run 100_000 mult
+
 extern crate lambdaworks_math;
 extern crate rand;
 
@@ -6,6 +10,7 @@ use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use lambdaworks_math::traits::ByteConversion;
 use rand::random;
+use std::time::Instant;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -16,31 +21,58 @@ pub fn rand_field_element() -> FE {
 }
 
 fn main() {
-        // Create a sample FieldElement
-    let original_value = rand_field_element();
+    const size: usize = 100000;
+    let mut x = [FE::zero(); size];
+    for i in 0..size {
+        x[i] = rand_field_element();
+    }
 
-    // Serialize the FieldElement to little-endian bytes
-    let serialized_bytes = original_value.to_bytes_le();
-    println!("Serialized bytes: {:?}", serialized_bytes);
-    println!("Serialized size: {}", serialized_bytes.len());
 
-    // Deserialize back to a FieldElement
-    match FE::from_bytes_le(&serialized_bytes) {
-        Ok(deserialized_value) => {
-            println!("Deserialized value: {}", deserialized_value);
+    let mut y = [[0u8; 32]; size];
 
-            // Check if the deserialized value matches the original
-            if deserialized_value == original_value {
-                println!("Success: Deserialized value matches the original!");
-            } else {
-                println!(
-                    "Error: Deserialized value does not match the original. Original: {}, Deserialized: {}",
-                    original_value, deserialized_value
-                );
-            }
-        }
-        Err(e) => {
-            println!("Error: Failed to deserialize bytes. {:?}", e);
+    let start = Instant::now();
+
+    for i in 0..size {
+        y[i] = x[i].to_bytes_le();
+    }
+
+    let duration = start.elapsed();
+    println!("Time taken for {} iterations: {:?}", size, duration);
+
+    let mut u = FE::zero();
+    let start = Instant::now();
+
+    for i in 0..size {
+        u += x[i];
+    }
+
+    let duration = start.elapsed();
+    println!("Time taken for {} iterations: {:?}", size, duration);
+
+    let mut v = FE::one();
+    let start = Instant::now();
+
+    for i in 0..size {
+        v *= x[i];
+    }
+
+    let duration = start.elapsed();
+    println!("Time taken for {} iterations: {:?}", size, duration);
+
+    let mut mem = [[FE::zero(); 16]; 600];
+    for i in 0..600 {
+        for j in 0..16 {
+            mem[i][j] = rand_field_element();
         }
     }
+
+    let mut dest = [FE::zero(); 16];
+    let start = Instant::now();
+
+    for i in 0..600 {
+        dest.copy_from_slice(&mem[i]);
+    }
+
+    let duration = start.elapsed();
+    println!("Time taken: {:?}", duration);
 }

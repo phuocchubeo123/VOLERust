@@ -1,3 +1,5 @@
+// send and receive 100_000 32-byte blocks in <100ms
+
 extern crate vole_rust;
 extern crate lambdaworks_math;
 extern crate rand;
@@ -17,6 +19,19 @@ pub type FE = FieldElement<F>;
 pub fn rand_field_element() -> FE {
     let rand_big = UnsignedInteger { limbs: random() };
     FE::new(rand_big)
+}
+
+fn bench_32byte(channel: &mut CommunicationChannel) {
+    const size: usize = 10000;
+    let elements = [[0u8; 32]; 4];
+
+    let start = Instant::now();
+    for i in 0..size {
+        channel.send_32byte_block(&elements);
+    }
+    let duration = start.elapsed();
+
+    println!("Sent {} elements in {:?}", size, duration);
 }
 
 fn main() {
@@ -48,4 +63,6 @@ fn main() {
     channel.send_bits(&bits_to_send).expect("Failed to send bits");
 
     println!("Sender: Bits sent successfully.");
+
+    bench_32byte(&mut channel);
 }

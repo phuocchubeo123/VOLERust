@@ -168,7 +168,7 @@ impl VoleTriple {
     pub fn extend_send<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, key: &[FE], t: usize) {
         mpfss.sender_init(self.delta);
         mpfss.mpfss_sender(io, pre_ot, key, y);
-        // y is already a regular vector (concat of n/t unit vectors), which corresponses to the noise in LPN
+        // // y is already a regular vector (concat of n/t unit vectors), which corresponses to the noise in LPN
         lpn.compute_send(y, &key[t+1..]);
     }
 
@@ -196,6 +196,8 @@ impl VoleTriple {
         let mut key = vec![FE::zero(); triple_n0];
         let mut svole0 = BaseSvole::new_sender(io, self.delta);
         svole0.triple_gen_send(io, &mut key, triple_n0);
+
+        io.flush();
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
         self.extend_send(io, &mut pre_y0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &key, self.param.t_pre0);
@@ -237,6 +239,8 @@ impl VoleTriple {
         let mut u = vec![FE::zero(); triple_n0];
         let mut svole0 = BaseSvole::new_receiver(io);
         svole0.triple_gen_recv(io, &mut mac, &mut u, triple_n0);
+
+        io.flush();
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
         let mut pre_z0 = vec![FE::zero(); self.param.n_pre0];

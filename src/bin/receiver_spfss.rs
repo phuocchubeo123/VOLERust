@@ -37,7 +37,7 @@ fn main() {
     // Original COT generation
     const depth: usize = 4;
     let size = depth - 1; // Number of COTs
-    let times = 1;
+    let times = 100;
     let mut choice_bits = vec![false; size*times];
     // Populate random choice bits
     for bit in &mut choice_bits {
@@ -48,28 +48,25 @@ fn main() {
     let mut receiver_pre_ot = OTPre::new(size, times);
     receiver_cot.cot_gen_preot(&mut channel, &mut receiver_pre_ot, size*times, Some(&choice_bits));
 
-    let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
-    let beta = rand_field_element();
     let received_data = channel.receive_stark252(2).expect("Failed to receive delta and gamma");
     let delta = received_data[0];
     let gamma = received_data[1];
-    let delta2 = gamma + delta * beta;
 
-    // Initialize Spfss for the sender
-    let mut receiver_spfss = SpfssRecverFp::new(depth);
-
-    receiver_pre_ot.choices_recver(&mut channel, &[false; depth - 1]);
-
-    receiver_spfss.recv(&mut channel, &mut receiver_pre_ot, 0);
-    receiver_spfss.compute(&mut ggm_tree_mem, delta2);
-
-    println!("GGM tree:");
-    for ggm in ggm_tree_mem.iter() {
-        println!("{:?}", ggm);
+    let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
+    for i in 0..times {
+        receiver_pre_ot.choices_recver(&mut channel, &[false; depth - 1]);
     }
+    channel.flush();
+    receiver_pre_ot.reset();
 
-    println!("Test delta: {:?}", delta);
-    println!("Manual consistency check: {:?}", ggm_tree_mem[(1<<(depth-1))-1] - delta * beta);
+    for i in 0..times {
+        let beta = rand_field_element();
+        let delta2 = gamma + delta * beta;
+        // Initialize Spfss for the sender
+        let mut receiver_spfss = SpfssRecverFp::new(depth);
 
-    receiver_spfss.consistency_check(&mut channel, delta2, beta);
+        receiver_spfss.recv(&mut channel, &mut receiver_pre_ot, 0);
+        receiver_spfss.compute(&mut ggm_tree_mem, delta2);
+        // receiver_spfss.consistency_check(&mut channel, delta2, beta);
+    }
 }

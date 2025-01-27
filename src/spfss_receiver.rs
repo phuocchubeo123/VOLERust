@@ -52,8 +52,6 @@ impl SpfssRecverFp {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
         ot.recv(io, &mut receive_data, &mut self.b, self.depth - 1, s);
 
-        // println!("Messages received in PreOT: {:?}", receive_data);
-
         self.m = receive_data
             .iter()
             .map(|x| FE::from_bytes_le(x).unwrap())

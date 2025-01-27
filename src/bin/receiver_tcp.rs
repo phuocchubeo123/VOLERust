@@ -11,6 +11,19 @@ use std::time::Instant;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
+fn bench_32byte(channel: &mut CommunicationChannel) {
+    const size: usize = 10000;
+    let elements = [[0u8; 32]; 4];
+
+    let start = Instant::now();
+    for i in 0..size {
+        let x = channel.receive_32byte_block();
+    }
+    let duration = start.elapsed();
+
+    println!("Receive {} elements in {:?}", size, duration);
+}
+
 fn main() {
     let element_count = 100_000; // Number of elements to receive
 
@@ -33,4 +46,6 @@ fn main() {
 
     println!("Receiver: Received bits: {:?}", received_bits);
     println!("Receiver: Bits received successfully.");
+
+    bench_32byte(&mut channel);
 }

@@ -60,12 +60,6 @@ impl SpfssSenderFp {
             .map(|x| x.to_bytes_le())
             .collect::<Vec<[u8; 32]>>();
 
-        // println!("Orignal elements in PreOT: {:?}", self.m0);
-        // println!("Orignal elements in PreOT: {:?}", self.m1);
-
-        // println!("Messages sent in PreOT: {:?}", ot_msg_0);
-        // println!("Messages sent in PreOT: {:?}", ot_msg_1);
-
         ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
         io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }

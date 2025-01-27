@@ -91,3 +91,9 @@ name = "sender_vole_triple"
 
 [[bin]]
 name = "receiver_vole_triple"
+
+[[bin]]
+name = "test_aes"
+
+[[bin]]
+name = "test_block"

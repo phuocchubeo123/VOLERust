@@ -82,7 +82,16 @@ impl MpfssReg {
         for i in 0..self.tree_n {
             ot.choices_sender(io);
         }
+        io.flush();
         ot.reset();
+
+        let mut seeds = vec![FE::zero(); self.tree_n];
+        if self.is_malicious {
+            self.seed_expand(io, &mut seeds, self.tree_n);
+        }
+        io.flush();
+
+        println!("Done creating seeds");
 
         // Now start doing Spfss
         for i in 0..self.tree_n {
@@ -93,10 +102,7 @@ impl MpfssReg {
 
             // Malicious check
             if self.is_malicious {
-                let mut seed = vec![FE::zero(); 1];
-                self.seed_expand(io, &mut seed, 1);
-                sender.consistency_check_msg_gen(&mut self.check_vw_buf[i], io, seed[0]);
-
+                sender.consistency_check_msg_gen(&mut self.check_vw_buf[i], io, seeds[i]);
             }
         }
 
@@ -116,6 +122,9 @@ impl MpfssReg {
             let h = FE::from_bytes_le(&digest).unwrap();
             io.send_stark252(&[h]).expect("Failed to send h");
         }
+
+        println!("Done here");
+
     }
 
     pub fn mpfss_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, triple_y: &[FE], triple_z: &[FE], sparse_vector_y: &mut [FE], sparse_vector_z: &mut [FE]) {
@@ -128,7 +137,13 @@ impl MpfssReg {
             let b = vec![false; self.tree_height - 1];
             ot.choices_recver(io, &b);
         }
+        io.flush();
         ot.reset();
+
+        let mut seeds = vec![FE::zero(); self.tree_n];
+        if self.is_malicious {
+            self.seed_expand(io, &mut seeds, self.tree_n);
+        }
 
         for i in 0..self.tree_n {
             let mut receiver = SpfssRecverFp::new(self.tree_height);
@@ -142,9 +157,7 @@ impl MpfssReg {
             sparse_vector_z[i*self.leave_n + self.item_pos_receiver[i]] = self.triple_z[i];
 
             if self.is_malicious {
-                let mut seed = vec![FE::zero(); 1];
-                self.seed_expand(io, &mut seed, 1);
-                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, seed[0]);
+                receiver.consistency_check_msg_gen(&mut self.check_chialpha_buf[i], &mut self.check_vw_buf[i], io, seeds[i]);
             }
         }
 

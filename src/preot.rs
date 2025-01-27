@@ -83,20 +83,20 @@ impl OTPre {
         length: usize,
         s: usize,
     ) {
-        let mut pad = [[0u8; 32]; 2];
+        let mut pad = vec![[0u8; 32]; 2*length];
         let k = s * length;
 
         for i in 0..length {
             let idx = k + i;
             if !self.bits[idx] {
-                pad[0] = xor_block(&m0[i], &self.pre_data[idx]);
-                pad[1] = xor_block(&m1[i], &self.pre_data[idx + self.n]);
+                pad[2*i] = xor_block(&m0[i], &self.pre_data[idx]);
+                pad[2*i+1] = xor_block(&m1[i], &self.pre_data[idx + self.n]);
             } else {
-                pad[0] = xor_block(&m0[i], &self.pre_data[idx + self.n]);
-                pad[1] = xor_block(&m1[i], &self.pre_data[idx]);
+                pad[2*i] = xor_block(&m0[i], &self.pre_data[idx + self.n]);
+                pad[2*i+1] = xor_block(&m1[i], &self.pre_data[idx]);
             }
-            io.send_32byte_block(&pad);
         }
+        io.send_32byte_block(&pad);
     }
 
     /// Receive and reconstruct data based on precomputed values
@@ -108,15 +108,12 @@ impl OTPre {
         length: usize,
         s: usize,
     ) {
-        let mut pad = [[0u8; 32]; 2];
+        let pad = io.receive_32byte_block();
         let k = s * length;
 
         for i in 0..length {
-            let received = io.receive_32byte_block();
-            pad.copy_from_slice(&received);
-
             let idx = if b[i] { 1 } else { 0 };
-            data[i] = xor_block(&self.pre_data[k + i], &pad[idx]);
+            data[i] = xor_block(&self.pre_data[k + i], &pad[2*i + idx]);
         }
     }
 

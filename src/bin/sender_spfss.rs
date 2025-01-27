@@ -1,3 +1,5 @@
+// for sender to generate 100 GGm trees with 16 leaves: 41.2 ms
+
 extern crate vole_rust;
 extern crate lambdaworks_math;
 extern crate rand;
@@ -22,7 +24,6 @@ pub fn rand_field_element() -> FE {
     FE::new(rand_big)
 }
 
-
 fn main() {
     // Connect to the receiver
     let stream = TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to receiver");
@@ -37,36 +38,34 @@ fn main() {
     // Original COT generation
     const depth: usize = 4;
     let size = depth - 1; // Number of COTs
-    let times = 1;
+    let times = 100;
     // New COT generation using OTPre
     let mut sender_pre_ot = OTPre::new(size, times);
     sender_cot.cot_gen_preot(&mut channel, &mut sender_pre_ot, size*times, None);
 
-    let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
     let delta = rand_field_element();
     let gamma = rand_field_element();
-
     channel.send_stark252(&[delta.clone(), gamma.clone()]).expect("Failed to send delta and gamma");
-
-    // Initialize Spfss for the sender
-    let mut sender_spfss = SpfssSenderFp::new(depth);
-
-    sender_pre_ot.choices_sender(&mut channel);
+    let mut ggm_tree_mem = [FE::zero(); 1 << (depth - 1)];
 
     let start = Instant::now();
-
-    sender_spfss.compute(&mut ggm_tree_mem, delta, gamma);
-    sender_spfss.send(&mut channel, &mut sender_pre_ot, 0);
-
-    let duration = start.elapsed();
-    println!("Time taken for one mpfss: {:?}", duration);
-
-    println!("GGM tree:");
-    for ggm in ggm_tree_mem.iter() {
-        println!("{:?}", ggm);
+    for i in 0..times {
+        sender_pre_ot.choices_sender(&mut channel);
     }
+    channel.flush();
+    sender_pre_ot.reset();
 
-    println!("Current: {:?}", gamma - ggm_tree_mem[(1 << (depth - 1)) - 1]);
+    for i in 0..times {
+        // Initialize Spfss for the sender
+        let mut sender_spfss = SpfssSenderFp::new(depth);
 
-    sender_spfss.consistency_check(&mut channel, gamma);
+        sender_spfss.compute(&mut ggm_tree_mem, delta, gamma);
+        sender_spfss.send(&mut channel, &mut sender_pre_ot, 0);
+        channel.flush();
+
+        // sender_spfss.consistency_check(&mut channel, gamma);
+    }
+    let duration = start.elapsed();
+    println!("Time taken: {:?}", duration);
+
 }
