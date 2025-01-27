@@ -161,6 +161,8 @@ impl MpfssReg {
             }
         }
 
+        println!("item_pos_receiver: {:?}", self.item_pos_receiver);
+
         if self.is_malicious {
             let mut beta_mul_chialpha = FE::zero();
             for i in 0..self.tree_n {

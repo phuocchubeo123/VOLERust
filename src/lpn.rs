@@ -50,7 +50,7 @@ impl Lpn {
             prp.permute_block(&mut tmp, 10);
             let r: Vec<usize> = tmp
                 .iter()
-                .map(|x| (u128::from_le_bytes(*x) as usize) % self.k)
+                .map(|x| ((u128::from_le_bytes(*x) >> 64) as usize) % self.k)
                 .collect();
 
             let mut tmp_field: Vec<_> = tmp2
@@ -58,6 +58,11 @@ impl Lpn {
                 .map(|x| FE::from_bytes_le(x).expect("Cannot get FE from bytes"))
                 .collect();
             field_prp.permute_block(&mut tmp_field, 10);
+
+            // if i < 5 {
+            //     println!("r: {:?}", r);
+            //     println!("tmp_field: {:?}", tmp_field);
+            // }
 
             self.K[i] = FE::zero();
             for m in 0..10 {
@@ -73,23 +78,29 @@ impl Lpn {
             let mut tmp = vec![[0u8; 16]; 10];
             let mut tmp2 = vec![[0u8; 32]; 10];
             for m in 0..10 {
-                tmp[0][0..8].copy_from_slice(&i.to_le_bytes());
-                tmp[0][8..].copy_from_slice(&(m as usize).to_le_bytes());
-                tmp2[0][0..8].copy_from_slice(&i.to_le_bytes());
-                tmp2[0][8..16].copy_from_slice(&(m as usize).to_le_bytes());
+                tmp[m][0..8].copy_from_slice(&i.to_le_bytes());
+                tmp[m][8..].copy_from_slice(&(m as usize).to_le_bytes());
+                tmp2[m][0..8].copy_from_slice(&i.to_le_bytes());
+                tmp2[m][8..16].copy_from_slice(&(m as usize).to_le_bytes());
             }
 
             prp.permute_block(&mut tmp, 10);
             let r: Vec<usize> = tmp
                 .iter()
-                .map(|x| (u128::from_le_bytes(*x) as usize) % self.k)
+                .map(|x| ((u128::from_le_bytes(*x) >> 64) as usize) % self.k)
                 .collect();
+
 
             let mut tmp_field: Vec<_> = tmp2
                 .iter()
                 .map(|x| FE::from_bytes_le(x).expect("Cannot get FE from bytes"))
                 .collect();
             field_prp.permute_block(&mut tmp_field, 10);
+
+            // if i < 5 {
+            //     println!("r: {:?}", r);
+            //     println!("tmp_field: {:?}", tmp_field);
+            // }
 
             // Initialize M[i] to zero
             self.M[i] = FE::zero();
